@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# Safer bash defaults
+set -euo pipefail
+IFS=$'\n\t'
+
+# Log tudo para arquivo
+LOGFILE="$HOME/.cache/wellarch/wellarch.log"
+mkdir -p "$(dirname "$LOGFILE")"
+exec > >(tee -a "$LOGFILE") 2>&1
+
 # ==============================================================================
 # DEFINIÇÃO DE CORES
 # ==============================================================================
@@ -22,6 +31,50 @@ parar_com_erro() {
     echo -e "${VERMELHO}Script interrompido.${NC}"
     exit 1
 }
+
+# Cleanup/Trap
+SUDO_KEEPALIVE_PID=""
+TMP_DIRS=()
+cleanup() {
+    # kill sudo keepalive if running
+    if [ -n "$SUDO_KEEPALIVE_PID" ]; then
+        kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
+    fi
+    # remove temporary dirs
+    for d in "${TMP_DIRS[@]:-}"; do
+        [ -n "$d" ] && rm -rf "$d" || true
+    done
+}
+trap cleanup EXIT ERR INT
+
+# Helper to run commands and fail with message
+run_cmd() {
+    if ! "$@"; then
+        parar_com_erro "Comando falhou: $*"
+    fi
+}
+
+# Argumentos
+DRY_RUN=false
+ASSUME_YES=false
+FORCE_RESOLV_LOCK=false
+while [ $# -gt 0 ]; do
+    case "${1-}" in
+        --dry-run) DRY_RUN=true; shift ;;
+        --yes|-y) ASSUME_YES=true; shift ;;
+        --force-resolv-lock) FORCE_RESOLV_LOCK=true; shift ;;
+        --help|-h)
+            cat <<EOF
+Usage: $0 [--dry-run] [--yes] [--force-resolv-lock]
+  --dry-run           Não executa ações destrutivas, apenas mostra o que faria
+  --yes, -y           Assume sim para prompts interativos
+  --force-resolv-lock Ativa o chattr +i em /etc/resolv.conf (risco)
+EOF
+            exit 0
+            ;;
+        *) break ;;
+    esac
+done
 
 # ==============================================================================
 # PREPARAÇÃO VISUAL
@@ -72,12 +125,20 @@ if [ "$EUID" -eq 0 ]; then
   exit 1
 fi
 
-echo "🔑 Digite sua senha sudo para liberar as verificações:"
-sudo -v
-if [ $? -ne 0 ]; then parar_com_erro "Sudo recusado"; fi
+# Verifica se é Arch Linux
+if ! grep -qi "arch" /etc/os-release; then
+    echo -e "${VERMELHO}⚠️  Este script foi feito para Arch Linux. Saindo.${NC}"
+    exit 1
+fi
 
-# Mantém sudo vivo
+echo "🔑 Digite sua senha sudo para liberar as verificações:"
+if ! sudo -v; then
+    parar_com_erro "Sudo recusado"
+fi
+
+# Mantém sudo vivo (background) e guarda PID para cleanup
 while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
+SUDO_KEEPALIVE_PID=$!
 
 # ---------------------------------------------------------
 # 2. PARU (AUR HELPER)
@@ -86,14 +147,18 @@ if is_installed paru; then
     echo "✅ Paru já está instalado. Pulando."
 else
     echo "📦 Instalando Paru (Compilando do código fonte)..."
-    sudo pacman -S --needed base-devel git --noconfirm
-    git clone https://aur.archlinux.org/paru.git
-    cd paru
-    makepkg -si --noconfirm
-    status=$?
-    cd ..
-    rm -rf paru
-    if [ $status -ne 0 ]; then parar_com_erro "Instalação do Paru"; fi
+    run_cmd sudo pacman -S --needed base-devel git --noconfirm
+    tmpdir=$(mktemp -d)
+    TMP_DIRS+=("$tmpdir")
+    run_cmd git clone https://aur.archlinux.org/paru.git "$tmpdir/paru"
+    pushd "$tmpdir/paru" >/dev/null
+    if ! makepkg -si --noconfirm; then
+        popd >/dev/null
+        parar_com_erro "Instalação do Paru (makepkg)"
+    fi
+    popd >/dev/null
+    rm -rf "$tmpdir"
+    TMP_DIRS=()
     echo -e "${VERDE}✅ Paru instalado!${NC}"
 fi
 
@@ -106,10 +171,9 @@ else
     echo "🌀 Configurando Chaotic AUR..."
     sudo pacman-key --recv-key 3056513887B78AEB --keyserver keyserver.ubuntu.com
     sudo pacman-key --lsign-key 3056513887B78AEB
-    sudo pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst' --noconfirm
+    run_cmd sudo pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst' --noconfirm
     echo -e "\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist" | sudo tee -a /etc/pacman.conf > /dev/null
-    sudo pacman -Sy --noconfirm
-    if [ $? -ne 0 ]; then parar_com_erro "Chaotic AUR"; fi
+    run_cmd sudo pacman -Sy --noconfirm
     echo -e "${VERDE}✅ Chaotic AUR configurado!${NC}"
 fi
 
@@ -127,7 +191,7 @@ if flatpak remote-list | grep -q "flathub"; then
     echo "✅ Repositório Flathub já ativo. Pulando."
 else
     echo "🌐 Adicionando Flathub..."
-    flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+    run_cmd flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
     echo -e "${VERDE}✅ Flathub configurado!${NC}"
 fi
 
@@ -151,11 +215,14 @@ for APP in "${APPS_FLATPAK[@]}"; do
         echo -e "   ℹ️  $APP já instalado. Pulando."
     else
         echo -e "   ⬇️  Instalando $APP..."
-        flatpak install flathub "$APP" -y
-        if [ $? -ne 0 ]; then
-            echo -e "   ${AMARELO}⚠️  Erro. Reparando e tentando novamente...${NC}"
-            sudo flatpak repair
-            flatpak install flathub "$APP" -y
+        if [ "$DRY_RUN" = true ]; then
+            echo "   (dry-run) pulando instalação de $APP"
+        else
+            if ! flatpak install flathub "$APP" -y; then
+                echo -e "   ${AMARELO}⚠️  Erro. Reparando e tentando novamente...${NC}"
+                sudo flatpak repair || true
+                flatpak install flathub "$APP" -y || echo "Falha ao instalar $APP"
+            fi
         fi
     fi
 done
@@ -167,8 +234,13 @@ if is_installed pamac; then
     echo "✅ Pamac já está instalado. Pulando."
 else
     echo "🛍️  Instalando Pamac-all..."
-    paru -S pamac-all --noconfirm
-    if [ $? -ne 0 ]; then parar_com_erro "Instalação do Pamac-all"; fi
+    if [ "$DRY_RUN" = true ]; then
+        echo "(dry-run) pulando instalação do pamac-all"
+    else
+        if ! paru -S pamac-all --noconfirm; then
+            parar_com_erro "Instalação do Pamac-all"
+        fi
+    fi
     echo -e "${VERDE}✅ Pamac instalado!${NC}"
 fi
 
@@ -182,14 +254,34 @@ if [ -f "$MARKER_FILE" ]; then
 else
     echo "🧸 Instalando LinuxToys..."
     DEPS=(bash git curl wget zenity python python-gobject python-requests gtk3 vte3)
-    sudo pacman -S --needed "${DEPS[@]}" --noconfirm
-    curl -fsSL https://linux.toys/install.sh | bash
-    if [ $? -eq 0 ]; then
-        touch "$MARKER_FILE"
-        echo -e "${VERDE}✅ LinuxToys instalado e marcador criado!${NC}"
+    run_cmd sudo pacman -S --needed "${DEPS[@]}" --noconfirm
+
+    lt_tmp=$(mktemp -d)
+    TMP_DIRS+=("$lt_tmp")
+    lt_script="$lt_tmp/linuxtoys-install.sh"
+    if ! curl -fsSL -o "$lt_script" https://linux.toys/install.sh; then
+        echo -e "${VERMELHO}⚠️ Falha ao baixar LinuxToys.${NC}"
     else
-        echo -e "${VERMELHO}⚠️ Falha no LinuxToys.${NC}"
+        echo "Script LinuxToys salvo em: $lt_script"
+        if [ "$ASSUME_YES" = true ]; then
+            bash "$lt_script"
+        else
+            read -p "Executar o instalador do LinuxToys agora? (y/n): " anslt
+            if [[ "$anslt" =~ ^[yY]$ ]]; then
+                bash "$lt_script"
+            else
+                echo "Pulando execução do instalador LinuxToys (arquivo baixado)."
+            fi
+        fi
+        if [ $? -eq 0 ]; then
+            touch "$MARKER_FILE"
+            echo -e "${VERDE}✅ LinuxToys instalado e marcador criado!${NC}"
+        else
+            echo -e "${VERMELHO}⚠️ Falha no LinuxToys.${NC}"
+        fi
     fi
+    rm -rf "$lt_tmp"
+    TMP_DIRS=()
 fi
 
 # ---------------------------------------------------------
@@ -205,9 +297,9 @@ else
     echo "⚙️  Aplicando DNS IPv4/IPv6 diretamente no NetworkManager..."
     
     # 1. Cria a pasta se não existir
-    sudo mkdir -p /etc/NetworkManager/conf.d/
-    
-    # 2. Cria arquivo de configuração global (Isso força o NetworkManager a usar estes IPs)
+    run_cmd sudo mkdir -p /etc/NetworkManager/conf.d/
+
+    # 2. Cria arquivo de configuração global (não trava resolv.conf por padrão)
     # A sintaxe [global-dns-domain-*] aplica para todos os domínios
     sudo tee "$NM_CONF" > /dev/null <<EOF
 [main]
@@ -218,18 +310,21 @@ servers=1.1.1.1,1.0.0.1,2606:4700:4700::1111,2606:4700:4700::1001
 EOF
     echo "   📄 Configuração do NetworkManager criada."
 
-    # 3. Trava o resolv.conf clássico como backup (Cinto e suspensórios)
+    # 3. Atualiza resolv.conf localmente (sem travar) — instruções para lock abaixo
     RESOLV_CONF="/etc/resolv.conf"
-    if lsattr "$RESOLV_CONF" 2>/dev/null | grep -q "i"; then sudo chattr -i "$RESOLV_CONF"; fi
-    sudo rm -f "$RESOLV_CONF"
+    sudo rm -f "$RESOLV_CONF" || true
     printf "nameserver 1.1.1.1\nnameserver 1.0.0.1\nnameserver 2606:4700:4700::1111\nnameserver 2606:4700:4700::1001\n" | sudo tee "$RESOLV_CONF" > /dev/null
-    sudo chattr +i "$RESOLV_CONF"
-    echo "   🔒 Arquivo resolv.conf travado manualmente."
+    if [ "$FORCE_RESOLV_LOCK" = true ]; then
+        echo "   🔒 Travando resolv.conf (opção forçada)."
+        sudo chattr +i "$RESOLV_CONF"
+    else
+        echo "   ⚠️  resolv.conf atualizado, mas não travado. Use --force-resolv-lock para travar com chattr +i (não recomendado)."
+    fi
 
     # 4. Reinicia o NetworkManager para aplicar
     echo "   🔄 Reiniciando serviço de rede..."
-    sudo systemctl restart NetworkManager
-    
+    run_cmd sudo systemctl restart NetworkManager
+
     echo -e "${VERDE}✅ DNS Cloudflare IPv4 e IPv6 aplicado nativamente!${NC}"
 fi
 
@@ -242,21 +337,40 @@ echo -e "${AZUL}🧹 Limpeza do Sistema...${NC}"
 sudo pacman -S --needed pacman-contrib --noconfirm &> /dev/null
 
 echo "   📦 Limpando cache do Pacman..."
-sudo paccache -rk 1 > /dev/null 2>&1
-sudo pacman -Sc --noconfirm > /dev/null 2>&1
+sudo paccache -rk 2 > /dev/null 2>&1
 
-ORPHANS=$(pacman -Qdtq)
-if [ -n "$ORPHANS" ]; then
-    echo "   🗑️  Removendo órfãos..."
-    sudo pacman -Rns $ORPHANS --noconfirm
-    echo -e "   ${VERDE}✅ Órfãos removidos.${NC}"
+if [ "$DRY_RUN" = true ]; then
+    echo "   (dry-run) pulando pacman -Sc destrutivo"
+else
+    echo "   Remoção adicional de caches antigos é opcional; mantendo configuração segura (paccache -rk 2)."
+fi
+
+mapfile -t ORPHANS < <(pacman -Qdtq || true)
+if [ ${#ORPHANS[@]} -gt 0 ]; then
+    echo "   🗑️  Órfãos encontrados: ${ORPHANS[*]}"
+    if [ "$ASSUME_YES" = true ]; then
+        run_cmd sudo pacman -Rns ${ORPHANS[*]} --noconfirm
+        echo -e "   ${VERDE}✅ Órfãos removidos.${NC}"
+    else
+        read -p "Remover pacotes órfãos acima? (y/n): " ansor
+        if [[ "$ansor" =~ ^[yY]$ ]]; then
+            run_cmd sudo pacman -Rns ${ORPHANS[*]} --noconfirm
+            echo -e "   ${VERDE}✅ Órfãos removidos.${NC}"
+        else
+            echo "   ✅ Pulando remoção de órfãos."
+        fi
+    fi
 else
     echo "   ✅ Nenhum órfão encontrado."
 fi
 
 echo "   🦄 Limpando cache do Paru..."
-paru -c --noconfirm
-paru -Sc --noconfirm
+if ! paru -c --noconfirm > /dev/null 2>&1; then
+    echo -e "   ${AMARELO}⚠️  Aviso ao limpar cache do Paru (paru -c).${NC}"
+fi
+if ! paru -Sc --noconfirm > /dev/null 2>&1; then
+    echo -e "   ${AMARELO}⚠️  Aviso ao limpar cache do Paru (paru -Sc).${NC}"
+fi
 
 echo "   📱 Limpando Flatpaks..."
 flatpak uninstall --unused -y > /dev/null 2>&1
