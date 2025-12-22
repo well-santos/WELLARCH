@@ -113,6 +113,52 @@ if [[ ! "$confirm" =~ ^[yY]$ ]]; then
 fi
 
 # ==============================================================================
+# MENU DE CONFIGURAÇÕES
+# ==============================================================================
+
+echo ""
+echo -e "${AZUL}⚙️  CONFIGURAÇÕES PRÉ-INSTALAÇÃO${NC}"
+echo "-------------------------------------------------------------"
+
+# Menu para escolher AUR Helper
+echo ""
+echo -e "${AMARELO}1. Qual AUR Helper você deseja?${NC}"
+echo "   a) Paru (padrão, mais rápido)"
+echo "   b) Yay (alternativa)"
+read -p "Escolha (a/b): " aur_choice
+case "${aur_choice,,}" in
+    b|yay)
+        AUR_HELPER="yay"
+        echo -e "${VERDE}✓ Escolhido: Yay${NC}"
+        ;;
+    a|paru|*)
+        AUR_HELPER="paru"
+        echo -e "${VERDE}✓ Escolhido: Paru${NC}"
+        ;;
+esac
+
+# Menu para escolher Pamac
+echo ""
+echo -e "${AMARELO}2. Qual versão do Pamac você deseja?${NC}"
+echo "   a) Pamac-all (com GUI + Flatpak + AUR, padrão)"
+echo "   b) Pamac-aur (apenas CLI + AUR)"
+read -p "Escolha (a/b): " pamac_choice
+case "${pamac_choice,,}" in
+    b|aur)
+        PAMAC_PKG="pamac-aur"
+        echo -e "${VERDE}✓ Escolhido: Pamac-aur${NC}"
+        ;;
+    a|all|*)
+        PAMAC_PKG="pamac-all"
+        echo -e "${VERDE}✓ Escolhido: Pamac-all${NC}"
+        ;;
+esac
+
+echo ""
+echo -e "${AZUL}Configurações confirmadas!${NC}"
+echo "-------------------------------------------------------------"
+
+# ==============================================================================
 # INÍCIO DA EXECUÇÃO
 # ==============================================================================
 
@@ -141,25 +187,42 @@ while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 SUDO_KEEPALIVE_PID=$!
 
 # ---------------------------------------------------------
-# 2. PARU (AUR HELPER)
+# 2. AUR HELPER (PARU OU YAY)
 # ---------------------------------------------------------
-if is_installed paru; then
-    echo "✅ Paru já está instalado. Pulando."
+if is_installed "$AUR_HELPER"; then
+    echo "✅ $AUR_HELPER já está instalado. Pulando."
 else
-    echo "📦 Instalando Paru (Compilando do código fonte)..."
-    run_cmd sudo pacman -S --needed base-devel git --noconfirm
-    tmpdir=$(mktemp -d)
-    TMP_DIRS+=("$tmpdir")
-    run_cmd git clone https://aur.archlinux.org/paru.git "$tmpdir/paru"
-    pushd "$tmpdir/paru" >/dev/null
-    if ! makepkg -si --noconfirm; then
+    if [ "$AUR_HELPER" = "yay" ]; then
+        echo "📦 Instalando Yay (Compilando do código fonte)..."
+        run_cmd sudo pacman -S --needed base-devel git --noconfirm
+        tmpdir=$(mktemp -d)
+        TMP_DIRS+=("$tmpdir")
+        run_cmd git clone https://aur.archlinux.org/yay.git "$tmpdir/yay"
+        pushd "$tmpdir/yay" >/dev/null
+        if ! makepkg -si --noconfirm; then
+            popd >/dev/null
+            parar_com_erro "Instalação do Yay (makepkg)"
+        fi
         popd >/dev/null
-        parar_com_erro "Instalação do Paru (makepkg)"
+        rm -rf "$tmpdir"
+        TMP_DIRS=()
+        echo -e "${VERDE}✅ Yay instalado!${NC}"
+    else
+        echo "📦 Instalando Paru (Compilando do código fonte)..."
+        run_cmd sudo pacman -S --needed base-devel git --noconfirm
+        tmpdir=$(mktemp -d)
+        TMP_DIRS+=("$tmpdir")
+        run_cmd git clone https://aur.archlinux.org/paru.git "$tmpdir/paru"
+        pushd "$tmpdir/paru" >/dev/null
+        if ! makepkg -si --noconfirm; then
+            popd >/dev/null
+            parar_com_erro "Instalação do Paru (makepkg)"
+        fi
+        popd >/dev/null
+        rm -rf "$tmpdir"
+        TMP_DIRS=()
+        echo -e "${VERDE}✅ Paru instalado!${NC}"
     fi
-    popd >/dev/null
-    rm -rf "$tmpdir"
-    TMP_DIRS=()
-    echo -e "${VERDE}✅ Paru instalado!${NC}"
 fi
 
 # ---------------------------------------------------------
@@ -228,17 +291,17 @@ for APP in "${APPS_FLATPAK[@]}"; do
 done
 
 # ---------------------------------------------------------
-# 6. PAMAC (via Paru)
+# 6. PAMAC (via AUR Helper)
 # ---------------------------------------------------------
 if is_installed pamac; then
     echo "✅ Pamac já está instalado. Pulando."
 else
-    echo "🛍️  Instalando Pamac-all..."
+    echo "🛍️  Instalando $PAMAC_PKG..."
     if [ "$DRY_RUN" = true ]; then
-        echo "(dry-run) pulando instalação do pamac-all"
+        echo "(dry-run) pulando instalação do $PAMAC_PKG"
     else
-        if ! paru -S pamac-all --noconfirm; then
-            parar_com_erro "Instalação do Pamac-all"
+        if ! $AUR_HELPER -S "$PAMAC_PKG" --noconfirm; then
+            parar_com_erro "Instalação do $PAMAC_PKG"
         fi
     fi
     echo -e "${VERDE}✅ Pamac instalado!${NC}"
@@ -364,12 +427,12 @@ else
     echo "   ✅ Nenhum órfão encontrado."
 fi
 
-echo "   🦄 Limpando cache do Paru..."
-if ! paru -c --noconfirm > /dev/null 2>&1; then
-    echo -e "   ${AMARELO}⚠️  Aviso ao limpar cache do Paru (paru -c).${NC}"
+echo "   🦄 Limpando cache do AUR Helper..."
+if ! $AUR_HELPER -c --noconfirm > /dev/null 2>&1; then
+    echo -e "   ${AMARELO}⚠️  Aviso ao limpar cache do $AUR_HELPER (-c).${NC}"
 fi
-if ! paru -Sc --noconfirm > /dev/null 2>&1; then
-    echo -e "   ${AMARELO}⚠️  Aviso ao limpar cache do Paru (paru -Sc).${NC}"
+if ! $AUR_HELPER -Sc --noconfirm > /dev/null 2>&1; then
+    echo -e "   ${AMARELO}⚠️  Aviso ao limpar cache do $AUR_HELPER (-Sc).${NC}"
 fi
 
 echo "   📱 Limpando Flatpaks..."

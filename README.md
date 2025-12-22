@@ -1,32 +1,30 @@
-# WELLARCH v13.1 🚀
+# WELLARCH v13.1
 
-**Automação, Pós-Instalação e Otimização para Arch Linux.**
+Automação, pós-instalação e otimização para Arch Linux.
 
-O **WELLARCH** é um script shell robusto projetado para transformar uma instalação base do Arch Linux em um sistema pronto para uso diário, com foco em performance, privacidade (DNS) e facilidade de gerenciamento.
-
----
-
-## ✨ Funcionalidades
-
-* **📦 AUR Helper Moderno:** Instalação e configuração automática do **Paru** (substituindo o Yay) compilado diretamente da fonte.
-* **🌀 Chaotic AUR:** Adiciona automaticamente o repositório Chaotic AUR para instalações mais rápidas de pacotes do AUR.
-* **🛍️ Pamac-all:** Instala a loja gráfica (GUI) com suporte a Flatpak e AUR.
-* **🛡️ DNS Blindado (IPv4 & IPv6):**
-    * Configura DNS da Cloudflare (`1.1.1.1` e IPv6) **diretamente no NetworkManager** (imune a reinicializações).
-    * Por padrão, **não trava** `/etc/resolv.conf` (veja `--force-resolv-lock` para ativar).
-* **📱 Flatpak & Flathub:** Configuração completa do ambiente Flatpak e repositório Flathub.
-* **🧸 LinuxToys:** Integração automática com o conjunto de ferramentas LinuxToys (com download seguro e confirmação).
-* **🧹 Limpeza Profunda:**
-    * Remove pacotes órfãos (com confirmação interativa).
-    * Limpa cache do Pacman e Paru (mantendo 2 versões para rollback).
-    * Remove runtimes Flatpak não utilizados.
-    * Rotaciona logs do sistema (Journalctl).
+O **WELLARCH** é um script de shell robusto projetado para transformar uma instalação base do Arch Linux em um sistema pronto para uso em produção, com foco em performance, segurança e facilidade de gerenciamento.
 
 ---
 
-## 🚀 Instalação Rápida
+## Funcionalidades
 
-Abra o terminal e cole o comando abaixo (não execute como root):
+- **AUR Helper:** Instalação automática e configuração do Paru, compilado diretamente da fonte.
+- **Chaotic AUR:** Integração automática do repositório Chaotic AUR para instalações mais rápidas.
+- **Pamac:** Instalação da interface gráfica com suporte a Flatpak e AUR.
+- **Configuração de DNS:** Configuração de DNS Cloudflare (IPv4 e IPv6) via NetworkManager, com proteção de privacidade.
+- **Flatpak & Flathub:** Configuração completa do ambiente Flatpak e repositório Flathub.
+- **LinuxToys:** Integração com ferramentas essenciais (download seguro com confirmação).
+- **Limpeza do Sistema:**
+  - Remoção de pacotes órfãos com confirmação interativa.
+  - Limpeza de cache do Pacman e Paru (mantendo 2 versões para rollback).
+  - Remoção de runtimes Flatpak não utilizados.
+  - Rotação de logs do sistema.
+
+---
+
+## Instalação
+
+Abra o terminal e execute:
 
 ```bash
 git clone https://github.com/well-santos/WELLARCH.git && cd WELLARCH && chmod +x wellarch.sh && ./wellarch.sh
@@ -34,7 +32,7 @@ git clone https://github.com/well-santos/WELLARCH.git && cd WELLARCH && chmod +x
 
 ---
 
-## 🛠️ Opções e Flags
+## Uso
 
 O script agora suporta os seguintes argumentos para maior controle e segurança:
 
@@ -69,34 +67,31 @@ O script agora suporta os seguintes argumentos para maior controle e segurança:
 
 ---
 
-## 📋 Melhorias e Segurança (v13.1+)
+## Melhorias de Segurança
 
-Este script foi refatorado com as seguintes melhorias:
+O script foi desenvolvido com as seguintes práticas:
 
-- ✅ **Modo Seguro:** `set -euo pipefail` para falhar rapidamente em erros críticos.
-- ✅ **Cleanup Automático:** `trap` para limpeza de diretórios temporários mesmo em caso de erro ou interrupção (Ctrl+C).
-- ✅ **Logging Completo:** Todas as saídas são registradas em `~/.cache/wellarch/wellarch.log` via `tee`.
-- ✅ **Download Seguro:** LinuxToys é baixado em diretório temporário (`mktemp`), não executado via pipe, e pede confirmação antes de rodar.
-- ✅ **Instalação Segura do Paru:** Usa `mktemp` para clonar o repositório, remove automaticamente a pasta de compilação.
-- ✅ **DNS Não Travado por Padrão:** `/etc/resolv.conf` é atualizado mas **não travado** com `chattr +i`. Use `--force-resolv-lock` para ativar (não recomendado).
-- ✅ **Limpeza Conservadora:** `paccache -rk 2` (mantém 2 versões) ao invés de `pacman -Sc` destrutivo.
-- ✅ **Confirmações Interativas:** Remoção de órfãos e instalação do LinuxToys pedem confirmação (pode ser pulada com `--yes`).
-- ✅ **Tratamento de Erros Consistente:** Novos comandos críticos usam `run_cmd()` que falha com mensagem clara e limpa tudo automaticamente.
-- ✅ **Verificação de Distro:** Valida que você está rodando no Arch Linux antes de prosseguir.
+- Modo seguro com `set -euo pipefail` para falhar rapidamente em erros críticos.
+- Limpeza automática de diretórios temporários mesmo em caso de erro ou interrupção.
+- Logging completo registrado em `~/.cache/wellarch/wellarch.log`.
+- Download seguro de ferramentas em diretório temporário com confirmação antes de execução.
+- Instalação segura do Paru com remoção automática de arquivos temporários.
+- Configuração de DNS não travada por padrão em `/etc/resolv.conf`.
+- Limpeza conservadora que mantém 2 versões anteriores para rollback.
+- Confirmações interativas para operações destrutivas.
+- Validação de distribuição antes de prosseguir.
 
 ---
 
-## ⚠️ Como Desfazer Alterações
+## Desfazendo Alterações
 
-### Desfazer Travamento do `/etc/resolv.conf`
-
-Se você usou `--force-resolv-lock` e quer desfazer:
+Para remover o travamento do `/etc/resolv.conf` (caso tenha usado `--force-resolv-lock`):
 
 ```bash
 sudo chattr -i /etc/resolv.conf
 ```
 
-Depois, o NetworkManager gerenciará o arquivo normalmente.
+O NetworkManager gerenciará o arquivo normalmente após isso.
 
 ### Remover DNS Cloudflare
 
