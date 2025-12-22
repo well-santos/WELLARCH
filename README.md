@@ -8,9 +8,9 @@ O **WELLARCH** é um script de shell robusto projetado para transformar uma inst
 
 ## Funcionalidades
 
-- **AUR Helper:** Instalação automática e configuração do Paru, compilado diretamente da fonte.
+- **AUR Helper:** Escolha entre Paru ou Yay (compilado diretamente da fonte).
 - **Chaotic AUR:** Integração automática do repositório Chaotic AUR para instalações mais rápidas.
-- **Pamac:** Instalação da interface gráfica com suporte a Flatpak e AUR.
+- **Pamac:** Escolha entre Pamac-all (GUI completa) ou Pamac-aur (CLI).
 - **Configuração de DNS:** Configuração de DNS Cloudflare (IPv4 e IPv6) via NetworkManager, com proteção de privacidade.
 - **Flatpak & Flathub:** Configuração completa do ambiente Flatpak e repositório Flathub.
 - **LinuxToys:** Integração com ferramentas essenciais (download seguro com confirmação).
@@ -34,7 +34,47 @@ git clone https://github.com/well-santos/WELLARCH.git && cd WELLARCH && chmod +x
 
 ## Uso
 
-O script agora suporta os seguintes argumentos para maior controle e segurança:
+### Menu Interativo de Configuração
+
+Antes da execução, o script apresenta um **menu interativo** com 4 perguntas:
+
+**1. AUR Helper (Gerenciador de AUR):**
+- **a) Paru** (padrão) - Mais rápido e moderno, recomendado
+- **b) Yay** - Alternativa tradicional
+
+**2. Gerenciador de Pacotes (Pamac):**
+- **a) Pamac-all** (padrão) - Interface gráfica completa com suporte a Flatpak e AUR
+- **b) Pamac-aur** - Interface de linha de comando apenas para AUR
+
+**3. Provedor de DNS:**
+- **a) Cloudflare** (padrão) - DNS 1.1.1.1, foco em privacidade
+- **b) Quad9** - DNS 9.9.9.9, foco em segurança
+- **c) Manter padrão** - Não fazer alterações de DNS
+
+**4. Aplicativos Flatpak:**
+Escolha quais apps deseja instalar:
+- ZapZap (WhatsApp)
+- Telegram
+- ProtonPlus
+- Equibop
+- Easy Effects
+- Ignition
+- Brave Browser
+- GNOME Extension Manager
+
+Você pode aceitar os padrões pressionando Enter, ou escolher suas preferências.
+
+### Verificação de Pré-Requisitos
+
+Antes de iniciar, o script:
+- Valida que você está no Arch Linux
+- Verifica conectividade com internet
+- Verifica espaço em disco disponível (avisa se menos de 3GB)
+- Cria backup automático de `/etc/pacman.conf`
+
+### Argumentos de Linha de Comando
+
+O script também suporta argumentos para maior controle e segurança:
 
 ```bash
 ./wellarch.sh [--dry-run] [--yes] [--force-resolv-lock] [--help]
@@ -55,7 +95,7 @@ O script agora suporta os seguintes argumentos para maior controle e segurança:
 # Modo seguro: simula sem fazer mudanças
 ./wellarch.sh --dry-run
 
-# Execução automática (sem prompts)
+# Execução automática (sem prompts, aceita padrões)
 ./wellarch.sh --yes
 
 # Ativar travamento do resolv.conf
@@ -67,81 +107,59 @@ O script agora suporta os seguintes argumentos para maior controle e segurança:
 
 ---
 
+## Relatório de Instalação
+
+Ao final da execução, o script mostra um **relatório detalhado** com:
+- Configurações selecionadas (AUR Helper, Pamac, DNS)
+- Lista de pacotes instalados
+- Lista de aplicativos Flatpak instalados
+- Itens que falharam (se houver)
+- Localização do log completo
+
+---
+
 ## Melhorias de Segurança
 
 O script foi desenvolvido com as seguintes práticas:
 
-- Modo seguro com `set -euo pipefail` para falhar rapidamente em erros críticos.
-- Limpeza automática de diretórios temporários mesmo em caso de erro ou interrupção.
-- Logging completo registrado em `~/.cache/wellarch/wellarch.log`.
-- Download seguro de ferramentas em diretório temporário com confirmação antes de execução.
-- Instalação segura do Paru com remoção automática de arquivos temporários.
-- Configuração de DNS não travada por padrão em `/etc/resolv.conf`.
-- Limpeza conservadora que mantém 2 versões anteriores para rollback.
-- Confirmações interativas para operações destrutivas.
-- Validação de distribuição antes de prosseguir.
+- **Modo seguro** com `set -euo pipefail` para falhar rapidamente em erros críticos
+- **Limpeza automática** de diretórios temporários mesmo em caso de erro ou interrupção
+- **Logging completo** registrado em `~/.cache/wellarch/wellarch.log`
+- **Download seguro** de ferramentas em diretório temporário com confirmação antes de execução
+- **Instalação segura** compilando diretamente da fonte para AUR helpers
+- **Backup automático** de `/etc/pacman.conf` antes de modificações
+- **Validação de internet** antes de fazer downloads
+- **Verificação de espaço em disco** antes de instalar pacotes pesados
+- **Confirmações interativas** para operações destrutivas
+- **Validação de distribuição** e permissões antes de prosseguir
 
 ---
 
-## Desfazendo Alterações
+## Desinstalação
+
+Para remover todas as alterações feitas pelo WELLARCH, execute:
+
+```bash
+chmod +x wellarch-remove.sh
+./wellarch-remove.sh
+```
+
+Este script:
+- Remove o AUR Helper instalado (Paru ou Yay)
+- Remove o repositório Chaotic AUR
+- Remove Pamac
+- Remove Flatpak e todos os apps instalados
+- Remove configurações de DNS
+- Restaura `/etc/pacman.conf` do backup (se disponível)
+- Limpa marcadores de instalação
+
+### Desfazendo Manualmente
 
 Para remover o travamento do `/etc/resolv.conf` (caso tenha usado `--force-resolv-lock`):
 
 ```bash
 sudo chattr -i /etc/resolv.conf
 ```
-
-O NetworkManager gerenciará o arquivo normalmente após isso.
-
-### Remover DNS Cloudflare
-
-Para voltar ao DNS padrão do sistema:
-
-```bash
-sudo rm -f /etc/NetworkManager/conf.d/99-cloudflare-dns.conf
-sudo systemctl restart NetworkManager
-```
-
-### Reverter Chaotic AUR
-
-Para remover o repositório Chaotic AUR:
-
-```bash
-# Editar o arquivo
-sudo nano /etc/pacman.conf
-
-# Remover as linhas:
-# [chaotic-aur]
-# Include = /etc/pacman.d/chaotic-mirrorlist
-```
-
-Depois atualize:
-
-```bash
-sudo pacman -Sy
-```
-
-### Remover LinuxToys
-
-Delete o marcador para poder reinstalar:
-
-```bash
-rm -f ~/.config/linuxtoys_installed.marker
-```
-
----
-
-## 🔍 Verificar Logs
-
-Para acompanhar o que o script fez:
-
-```bash
-cat ~/.cache/wellarch/wellarch.log
-```
-
----
-
-## 📝 Notas Importantes
 
 - **Não execute como root:** O script pede a senha do sudo conforme necessário.
 - **Pode levar tempo:** Dependendo de sua conexão, instalar o Paru e Flatpaks pode levar vários minutos.
