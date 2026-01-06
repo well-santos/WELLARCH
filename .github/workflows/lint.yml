@@ -1,0 +1,29 @@
+name: Shell Lint
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    name: Lint shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install lint tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck shfmt
+
+      - name: Run shellcheck
+        run: shellcheck -x wellarch.sh
+
+      - name: Check formatting with shfmt
+        run: shfmt -l wellarch.sh
+
+      - name: Syntax check
+        run: bash -n wellarch.sh
