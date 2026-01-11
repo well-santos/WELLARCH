@@ -27,10 +27,10 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Helper functions
-log_info() { echo -e "${AZUL}$*${NC}"; }
-log_error() { echo -e "${VERMELHO}❌ $*${NC}"; }
-log_success() { echo -e "${VERDE}✅ $*${NC}"; }
-log_warn() { echo -e "${AMARELO}⚠️ $*${NC}"; }
+log_info() { echo -e "${AZUL}$*${NC}" >&2; }
+log_error() { echo -e "${VERMELHO}❌ $*${NC}" >&2; }
+log_success() { echo -e "${VERDE}✅ $*${NC}" >&2; }
+log_warn() { echo -e "${AMARELO}⚠️ $*${NC}" >&2; }
 
 # Check internet connectivity
 check_internet() {
