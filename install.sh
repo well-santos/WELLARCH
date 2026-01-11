@@ -19,8 +19,12 @@ GITHUB_BRANCH="main"
 SCRIPT_NAME="wellarch.sh"
 GITHUB_RAW_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}"
 TEMP_DIR=$(mktemp -d)
+# Optional: URL to a public GPG key to import for verifying signatures
+# Example: export GPG_PUBKEY_URL="https://raw.githubusercontent.com/well-santos/WELLARCH/main/pubkey.asc"
+GPG_PUBKEY_URL=""
 
 # Cleanup on exit
+# shellcheck disable=SC2329 # Invoked via trap at runtime
 cleanup() {
     [[ -d "$TEMP_DIR" ]] && rm -rf "$TEMP_DIR"
 }
@@ -52,22 +56,61 @@ check_curl() {
 download_script() {
     local script_url="${GITHUB_RAW_URL}/${SCRIPT_NAME}"
     local script_path="${TEMP_DIR}/${SCRIPT_NAME}"
-    
+    local sha_url="${script_url}.sha256"
+    local sha_path="${TEMP_DIR}/${SCRIPT_NAME}.sha256"
+    local CURL_OPTS=(--connect-timeout 10 --retry 3 --max-time 120 -fsSL)
+
     log_info "📥 Baixando WELLARCH de ${GITHUB_REPO}..."
-    
-    if ! curl -fsSL -o "$script_path" "$script_url"; then
+
+    if ! curl "${CURL_OPTS[@]}" -o "$script_path" "$script_url"; then
         log_error "Falha ao baixar WELLARCH."
         exit 1
     fi
-    
+
     if [[ ! -f "$script_path" ]]; then
         log_error "Download falhou - arquivo não encontrado."
         exit 1
     fi
-    
+
+    # Prefer GPG verification if signature is available, otherwise fallback to SHA256
+    local sig_url="${script_url}.sig"
+    local sig_path="${TEMP_DIR}/${SCRIPT_NAME}.sig"
+
+    if command -v gpg >/dev/null 2>&1 && curl -f --connect-timeout 5 --retry 2 -sS -o "$sig_path" "$sig_url" 2>/dev/null; then
+        log_info "🔐 Assinatura GPG encontrada — verificando..."
+        if [[ -n "${GPG_PUBKEY_URL:-}" ]]; then
+            if curl -fsSL -o "$TEMP_DIR/pubkey.asc" "$GPG_PUBKEY_URL" 2>/dev/null; then
+                gpg --import "$TEMP_DIR/pubkey.asc" >/dev/null 2>&1 || true
+            else
+                log_warn "Não foi possível baixar a chave pública de ${GPG_PUBKEY_URL}; continuando com verificação local se possível."
+            fi
+        fi
+
+        if ! gpg --verify "$sig_path" "$script_path" >/dev/null 2>&1; then
+            log_error "Falha na verificação GPG do $SCRIPT_NAME"
+            exit 1
+        fi
+        log_success "Verificação GPG OK"
+    else
+        # Tentar baixar checksum SHA256 opcional e verificar
+        if curl -f --connect-timeout 5 --retry 2 -sS -o "$sha_path" "$sha_url" 2>/dev/null; then
+            log_info "🔒 Verificando integridade via SHA256..."
+            pushd "$TEMP_DIR" >/dev/null || true
+            if ! sha256sum -c "${SCRIPT_NAME}.sha256" --quiet; then
+                popd >/dev/null || true
+                log_error "Falha na verificação SHA256 do $SCRIPT_NAME"
+                exit 1
+            fi
+            popd >/dev/null || true
+            log_success "Verificação SHA256 OK"
+        else
+            log_warn "Checksum SHA256 não encontrado; pulando verificação (opcional)."
+        fi
+    fi
+
     chmod +x "$script_path"
     log_success "WELLARCH baixado com sucesso!"
-    
+
     echo "$script_path"
 }
 
@@ -75,11 +118,16 @@ download_script() {
 download_remove_script() {
     local script_url="${GITHUB_RAW_URL}/wellarch-remove.sh"
     local script_path="${TEMP_DIR}/wellarch-remove.sh"
-    
-    if curl -fsSL -o "$script_path" "$script_url" 2>/dev/null; then
+
+    if curl --connect-timeout 8 --retry 2 -fsSL -o "$script_path" "$script_url" 2>/dev/null; then
         chmod +x "$script_path"
         # Copy to user's directory for later use
-        cp "$script_path" "$HOME/.local/bin/wellarch-remove.sh" 2>/dev/null || true
+        mkdir -p "$HOME/.local/bin"
+        if cp "$script_path" "$HOME/.local/bin/wellarch-remove.sh" 2>/dev/null; then
+            log_success "wellarch-remove.sh instalado em ~/.local/bin"
+        else
+            log_warn "Não foi possível copiar wellarch-remove.sh para ~/.local/bin"
+        fi
         return 0
     fi
     return 1
