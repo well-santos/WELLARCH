@@ -21,7 +21,7 @@ ROXO='\033[0;35m'
 NC='\033[0m' # Sem cor
 
 # Versão do script
-VERSION="13.1"
+VERSION="14.0"
 
 # Logging helpers
 VERBOSE=false
@@ -34,7 +34,7 @@ log_error() { echo -e "${VERMELHO}$*${NC}"; }
 # FUNÇÕES AUXILIARES
 # ==============================================================================
 is_installed() {
-	command -v "$1" &>/dev/null
+	command -v "$1" &>/dev/null || return 1
 }
 
 on_err() {
@@ -54,12 +54,12 @@ SUDO_KEEPALIVE_PID=""
 TMP_DIRS=()
 cleanup() {
 	# kill sudo keepalive if running
-	if [ -n "$SUDO_KEEPALIVE_PID" ]; then
+	if [[ -n "$SUDO_KEEPALIVE_PID" ]]; then
 		kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
 	fi
 	# remove temporary dirs safely
 	for d in "${TMP_DIRS[@]:-}"; do
-		if [ -n "$d" ] && [[ "$d" = /* ]] && [ -e "$d" ]; then
+		if [[ -n "$d" && "$d" = /* && -e "$d" ]]; then
 			rm -rf -- "$d" || true
 		fi
 	done
@@ -89,7 +89,7 @@ sudo_run() {
 
 # Verifica conectividade com internet
 check_internet() {
-	if ! ping -c 1 8.8.8.8 &>/dev/null; then
+	if ! ping -c 1 8.8.8.8 &>/dev/null && ! ping -c 1 1.1.1.1 &>/dev/null; then
 		parar_com_erro "Sem conexão com internet. Verifique sua conexão de rede."
 	fi
 }
@@ -147,7 +147,7 @@ while [ $# -gt 0 ]; do
 		;;
 	--help | -h)
 		cat <<EOF
-${AZUL}WELLARCH v13.1 - Automação para Arch Linux${NC}
+${AZUL}WELLARCH v14.0 - Automação para Arch Linux${NC}
 
 ${AMARELO}USO:${NC}
   $0 [OPÇÕES]
@@ -202,7 +202,7 @@ cat <<"EOF"
 ║    ╚══╝╚══╝ ╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝      ║ 
 ║                                                                           ║
 ║              Automação, Pós-Instalação e Otimização                       ║
-║                        para Arch Linux v13.1                              ║
+║                        para Arch Linux v14.0                              ║
 ║                                                                           ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
 EOF
@@ -358,7 +358,7 @@ echo "-------------------------------------------------------------"
 # ==============================================================================
 
 echo ""
-echo -e "${AMARELO}🚀 Iniciando WELLARCH v13.1...${NC}"
+echo -e "${AMARELO}🚀 Iniciando WELLARCH v14.0...${NC}"
 
 # 1. Checagem de Root
 if [ "$EUID" -eq 0 ]; then
@@ -368,7 +368,7 @@ fi
 
 # Verifica se é Arch Linux
 if ! grep -qi "arch" /etc/os-release; then
-	echo -e "${VERMELHO}⚠️  Este script foi feito para Arch Linux. Saindo.${NC}"
+	echo -e "${VERMELHO}⚠️ Este script foi feito para Arch Linux. Saindo.${NC}"
 	exit 1
 fi
 
@@ -387,24 +387,26 @@ check_disk_space
 
 # Mantém sudo vivo (background) e guarda PID para cleanup
 while true; do
-	sudo -n true
+	sudo -n true 2>/dev/null || break
 	sleep 60
-	kill -0 "$$" || exit
-done 2>/dev/null &
+done &
 SUDO_KEEPALIVE_PID=$!
 
 # ---------------------------------------------------------
 # Atualizar mirrorlist com reflector (rápido e recomendado)
 # ---------------------------------------------------------
 setup_reflector() {
-	if [ "${DRY_RUN:-false}" = true ]; then
+	if [[ "${DRY_RUN:-false}" == true ]]; then
 		echo -e "${AMARELO}(dry-run) pulando atualização de mirrors com reflector${NC}"
 		return 0
 	fi
 
 	if ! is_installed reflector; then
 		echo "🔧 Instalando reflector para ordenação de mirrors..."
-		sudo_run pacman -S --needed reflector --noconfirm || echo -e "${AMARELO}⚠️ Não foi possível instalar reflector automaticamente.${NC}"
+		sudo_run pacman -S --needed reflector --noconfirm || {
+			echo -e "${AMARELO}⚠️ Não foi possível instalar reflector automaticamente.${NC}"
+			return 1
+		}
 	else
 		echo "✅ reflector já instalado."
 	fi
@@ -412,7 +414,10 @@ setup_reflector() {
 	if is_installed reflector; then
 		echo "🔄 Atualizando /etc/pacman.d/mirrorlist com reflector (mirrors rápidos)..."
 		sudo_run cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.wellarch.bak || true
-		sudo_run reflector --latest 20 --protocol https --sort rate --age 12 --save /etc/pacman.d/mirrorlist || echo -e "${AMARELO}⚠️ Falha ao executar reflector. Pulando.${NC}"
+		sudo_run reflector --latest 20 --protocol https --sort rate --age 12 --save /etc/pacman.d/mirrorlist || {
+			echo -e "${AMARELO}⚠️ Falha ao executar reflector. Pulando.${NC}"
+			return 1
+		}
 		sudo_run pacman -Syy --noconfirm || true
 	fi
 }
@@ -420,96 +425,96 @@ setup_reflector() {
 setup_reflector
 
 # ---------------------------------------------------------
-# 2. AUR HELPER (PARU OU YAY)
+# 2. CHAOTIC AUR
 # ---------------------------------------------------------
-if is_installed "$AUR_HELPER"; then
-	echo "✅ $AUR_HELPER já está instalado. Pulando."
-else
-	if [ "$AUR_HELPER" = "yay" ]; then
-		echo "📦 Instalando Yay (Compilando do código fonte)..."
-		sudo_run pacman -S --needed base-devel git --noconfirm
-		tmpdir=$(mktemp -d)
-		TMP_DIRS+=("$tmpdir")
-		run_cmd git clone https://aur.archlinux.org/yay.git "$tmpdir/yay"
-		pushd "$tmpdir/yay" >/dev/null
-		if [ "${DRY_RUN:-false}" = true ]; then
-			echo -e "${AMARELO}(dry-run) pulando makepkg para Yay${NC}"
-		else
-			if ! makepkg -si --noconfirm; then
-				popd >/dev/null
-				parar_com_erro "Instalação do Yay (makepkg)"
-			fi
-		fi
-		popd >/dev/null
-		if [[ "$tmpdir" = /* ]] && [ -d "$tmpdir" ]; then
-			rm -rf -- "$tmpdir"
-		fi
-		TMP_DIRS=()
-		echo -e "${VERDE}✅ Yay instalado!${NC}"
-		INSTALLED_PACKAGES+=("Yay")
-	else
-		echo "📦 Instalando Paru (Compilando do código fonte)..."
-		sudo_run pacman -S --needed base-devel git --noconfirm
-		tmpdir=$(mktemp -d)
-		TMP_DIRS+=("$tmpdir")
-		run_cmd git clone https://aur.archlinux.org/paru.git "$tmpdir/paru"
-		pushd "$tmpdir/paru" >/dev/null
-		if [ "${DRY_RUN:-false}" = true ]; then
-			echo -e "${AMARELO}(dry-run) pulando makepkg para Paru${NC}"
-		else
-			if ! makepkg -si --noconfirm; then
-				popd >/dev/null
-				parar_com_erro "Instalação do Paru (makepkg)"
-			fi
-		fi
-		popd >/dev/null
-		if [[ "$tmpdir" = /* ]] && [ -d "$tmpdir" ]; then
-			rm -rf -- "$tmpdir"
-		fi
-		TMP_DIRS=()
-		echo -e "${VERDE}✅ Paru instalado!${NC}"
-		INSTALLED_PACKAGES+=("Paru")
+setup_chaotic_aur() {
+	if grep -q "chaotic-aur" /etc/pacman.conf; then
+		echo "✅ Chaotic AUR já está configurado. Pulando."
+		return 0
 	fi
-fi
-
-# ---------------------------------------------------------
-# 3. CHAOTIC AUR
-# ---------------------------------------------------------
-if grep -q "chaotic-aur" /etc/pacman.conf; then
-	echo "✅ Chaotic AUR já está configurado. Pulando."
-else
 	echo "🌀 Configurando Chaotic AUR..."
-	# Backup do pacman.conf
 	sudo_run cp /etc/pacman.conf /etc/pacman.conf.bak
 	echo "   📝 Backup de /etc/pacman.conf criado em /etc/pacman.conf.bak"
 
 	sudo_run pacman-key --recv-key 3056513887B78AEB --keyserver keyserver.ubuntu.com
 	sudo_run pacman-key --lsign-key 3056513887B78AEB
-	sudo_run pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst' --noconfirm
+	sudo_run pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' \
+		'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst' --noconfirm
 	echo -e "\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist" | sudo_run tee -a /etc/pacman.conf >/dev/null
 	sudo_run pacman -Sy --noconfirm
 	echo -e "${VERDE}✅ Chaotic AUR configurado!${NC}"
 	INSTALLED_PACKAGES+=("Chaotic AUR")
-fi
+}
+
+setup_chaotic_aur
+
+# ---------------------------------------------------------
+# 3. AUR HELPER (PARU OU YAY)
+# ---------------------------------------------------------
+install_aur_helper() {
+	if is_installed "$AUR_HELPER"; then
+		echo "✅ $AUR_HELPER já está instalado. Pulando."
+		return 0
+	fi
+	echo "📦 Instalando $AUR_HELPER..."
+
+	if sudo_run pacman -S "$AUR_HELPER" --noconfirm 2>/dev/null; then
+		echo -e "${VERDE}✅ $AUR_HELPER instalado via repositório!${NC}"
+		INSTALLED_PACKAGES+=("$AUR_HELPER")
+		return 0
+	fi
+
+	echo "📦 Instalando $AUR_HELPER-bin do AUR..."
+	sudo_run pacman -S --needed base-devel git --noconfirm
+	local tmpdir
+	tmpdir=$(mktemp -d)
+	TMP_DIRS+=("$tmpdir")
+
+	run_cmd git clone "https://aur.archlinux.org/${AUR_HELPER}-bin.git" "$tmpdir/$AUR_HELPER"
+	pushd "$tmpdir/$AUR_HELPER" >/dev/null || return 1
+
+	if [[ "${DRY_RUN:-false}" == true ]]; then
+		echo -e "${AMARELO}(dry-run) pulando makepkg para $AUR_HELPER${NC}"
+	else
+		if ! makepkg -si --noconfirm; then
+			popd >/dev/null
+			parar_com_erro "Instalação do $AUR_HELPER (makepkg)"
+		fi
+	fi
+
+	popd >/dev/null
+	if [[ "$tmpdir" == /* && -d "$tmpdir" ]]; then
+		rm -rf -- "$tmpdir"
+	fi
+	TMP_DIRS=()
+	echo -e "${VERDE}✅ $AUR_HELPER instalado via AUR!${NC}"
+	INSTALLED_PACKAGES+=("$AUR_HELPER")
+}
+
+install_aur_helper
 
 # ---------------------------------------------------------
 # 4. FLATPAK & FLATHUB
 # ---------------------------------------------------------
-if is_installed flatpak; then
-	echo "✅ Flatpak já está instalado."
-else
-	echo "📦 Instalando Flatpak..."
-	sudo_run pacman -S flatpak --noconfirm
-	INSTALLED_PACKAGES+=("Flatpak")
-fi
+setup_flatpak() {
+	if ! is_installed flatpak; then
+		echo "📦 Instalando Flatpak..."
+		sudo_run pacman -S flatpak --noconfirm
+		INSTALLED_PACKAGES+=("Flatpak")
+	else
+		echo "✅ Flatpak já está instalado."
+	fi
 
-if flatpak remote-list | grep -q "flathub"; then
-	echo "✅ Repositório Flathub já ativo. Pulando."
-else
-	echo "🌐 Adicionando Flathub..."
-	run_cmd flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-	echo -e "${VERDE}✅ Flathub configurado!${NC}"
-fi
+	if ! flatpak remote-list 2>/dev/null | grep -q "flathub"; then
+		echo "🌐 Adicionando Flathub..."
+		run_cmd flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+		echo -e "${VERDE}✅ Flathub configurado!${NC}"
+	else
+		echo "✅ Repositório Flathub já ativo. Pulando."
+	fi
+}
+
+setup_flatpak
 
 # ---------------------------------------------------------
 # 5. APPS FLATPAK
@@ -520,7 +525,7 @@ for APP in "${SELECTED_APPS[@]}"; do
 		echo -e "   ℹ️  $APP já instalado. Pulando."
 	else
 		echo -e "   ⬇️  Instalando $APP..."
-		if [ "$DRY_RUN" = true ]; then
+		if [[ "$DRY_RUN" == true ]]; then
 			echo "   (dry-run) pulando instalação de $APP"
 		else
 			if flatpak install flathub "$APP" -y; then
@@ -546,7 +551,7 @@ if is_installed pamac; then
 	echo "✅ Pamac já está instalado. Pulando."
 else
 	echo "🛍️  Instalando $PAMAC_PKG..."
-	if [ "$DRY_RUN" = true ]; then
+	if [[ "$DRY_RUN" == true ]]; then
 		echo "(dry-run) pulando instalação do $PAMAC_PKG"
 	else
 		if ! $AUR_HELPER -S "$PAMAC_PKG" --noconfirm; then
@@ -614,17 +619,16 @@ fi
 # ---------------------------------------------------------
 # 8. DNS CLOUDFLARE (SOLUÇÃO DEFINITIVA NETWORK MANAGER)
 # ---------------------------------------------------------
-if [ "$DNS_PROVIDER" != "none" ]; then
+setup_dns() {
+if [[ "$DNS_PROVIDER" != "none" ]]; then
 	echo "🌐 Configurando DNS..."
 	NM_CONF="/etc/NetworkManager/conf.d/99-dns-provider.conf"
 
 	# Sanity check: DNS_SERVERS deve estar definido
-	if [ -z "${DNS_SERVERS:-}" ]; then
-		echo -e "${AMARELO}⚠️  DNS_SERVERS vazio; pulando configuração de DNS.${NC}"
+	if [[ -z "${DNS_SERVERS:-}" ]]; then
+		echo -e "${AMARELO}⚠️ DNS_SERVERS vazio; pulando configuração de DNS.${NC}"
 	else
-
-		# Verifica se a configuração nativa do NM já existe
-		if [ -f "$NM_CONF" ]; then
+		if [[ -f "$NM_CONF" ]]; then
 			echo "✅ Configuração de DNS já aplicada. Pulando."
 		else
 			echo "⚙️  Aplicando DNS via NetworkManager..."
@@ -652,7 +656,7 @@ EOF
 				printf "nameserver %s\n" "$server" | sudo_run tee -a "$RESOLV_CONF" >/dev/null
 			done
 
-			if [ "$FORCE_RESOLV_LOCK" = true ]; then
+			if [[ "$FORCE_RESOLV_LOCK" == true ]]; then
 				echo "   🔒 Travando resolv.conf (opção forçada)."
 				sudo_run chattr +i "$RESOLV_CONF"
 			else
@@ -668,8 +672,11 @@ EOF
 		fi
 	fi
 else
-	echo "⏭️  DNS: Mantendo configuração padrão do sistema."
+	echo "⏭️ DNS: Mantendo configuração padrão do sistema."
 fi
+}
+
+setup_dns
 
 # ---------------------------------------------------------
 # 9. LIMPEZA
@@ -682,16 +689,16 @@ sudo_run pacman -S --needed pacman-contrib --noconfirm &>/dev/null
 echo "   📦 Limpando cache do Pacman..."
 sudo_run paccache -rk 2 >/dev/null 2>&1
 
-if [ "$DRY_RUN" = true ]; then
+if [[ "$DRY_RUN" == true ]]; then
 	echo "   (dry-run) pulando pacman -Sc destrutivo"
 else
 	echo "   Remoção adicional de caches antigos é opcional; mantendo configuração segura (paccache -rk 2)."
 fi
 
 mapfile -t ORPHANS < <(pacman -Qdtq || true)
-if [ ${#ORPHANS[@]} -gt 0 ]; then
-	echo "   🗑️  Órfãos encontrados: ${ORPHANS[*]}"
-	if [ "$ASSUME_YES" = true ]; then
+if [[ ${#ORPHANS[@]} -gt 0 ]]; then
+	echo "   🗑️ Órfãos encontrados: ${ORPHANS[*]}"
+	if [[ "$ASSUME_YES" == true ]]; then
 		sudo_run pacman -Rns "${ORPHANS[@]}" --noconfirm
 		echo -e "   ${VERDE}✅ Órfãos removidos.${NC}"
 	else
@@ -737,7 +744,7 @@ echo -e "   Pamac: ${VERDE}$PAMAC_PKG${NC}"
 echo -e "   DNS: ${VERDE}$DNS_PROVIDER${NC}"
 echo ""
 
-if [ ${#INSTALLED_PACKAGES[@]} -gt 0 ]; then
+if [[ ${#INSTALLED_PACKAGES[@]} -gt 0 ]]; then
 	echo -e "${AMARELO}📦 PACOTES INSTALADOS: ${#INSTALLED_PACKAGES[@]}${NC}"
 	for pkg in "${INSTALLED_PACKAGES[@]}"; do
 		echo -e "   ${VERDE}✓${NC} $pkg"
@@ -745,7 +752,7 @@ if [ ${#INSTALLED_PACKAGES[@]} -gt 0 ]; then
 	echo ""
 fi
 
-if [ ${#INSTALLED_FLATPAKS[@]} -gt 0 ]; then
+if [[ ${#INSTALLED_FLATPAKS[@]} -gt 0 ]]; then
 	echo -e "${AMARELO}📱 APLICATIVOS FLATPAK INSTALADOS: ${#INSTALLED_FLATPAKS[@]}${NC}"
 	for flatpak in "${INSTALLED_FLATPAKS[@]}"; do
 		echo -e "   ${VERDE}✓${NC} $flatpak"
@@ -753,7 +760,7 @@ if [ ${#INSTALLED_FLATPAKS[@]} -gt 0 ]; then
 	echo ""
 fi
 
-if [ ${#FAILED_ITEMS[@]} -gt 0 ]; then
+if [[ ${#FAILED_ITEMS[@]} -gt 0 ]]; then
 	echo -e "${AMARELO}❌ ITENS QUE FALHARAM: ${#FAILED_ITEMS[@]}${NC}"
 	for failed in "${FAILED_ITEMS[@]}"; do
 		echo -e "   ${VERMELHO}✗${NC} $failed"

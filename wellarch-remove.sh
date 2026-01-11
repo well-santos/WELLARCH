@@ -32,7 +32,7 @@ is_installed() {
 # ==============================================================================
 clear
 echo -e "${AZUL}"
-echo "WELLARCH REMOVER v13.1"
+echo "WELLARCH REMOVER v14.0"
 echo -e "${NC}"
 echo -e "${ROXO}:: Script de Desinstalação para WELLARCH ::${NC}"
 echo -e "-------------------------------------------------------------"

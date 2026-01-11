@@ -1,4 +1,4 @@
-# WELLARCH v13.1
+# WELLARCH v14.0
 
 Automação, pós-instalação e otimização para Arch Linux.
 
@@ -8,8 +8,8 @@ O **WELLARCH** é um script de shell robusto projetado para transformar uma inst
 
 ## Funcionalidades
 
-- **AUR Helper:** Escolha entre Paru ou Yay (compilado diretamente da fonte).
-- **Chaotic AUR:** Integração automática do repositório Chaotic AUR para instalações mais rápidas.
+- **AUR Helper:** Escolha entre Paru ou Yay (Instalação via Chaotic-AUR ou fallback binário do AUR).
+- **Chaotic AUR:** Integração automática do repositório Chaotic AUR para instalações mais rápidas e helpers pré-compilados.
 - **Pamac:** Escolha entre Pamac-all (GUI completa) ou Pamac-aur (CLI).
 - **Configuração de DNS:** Configuração de DNS Cloudflare (IPv4 e IPv6) via NetworkManager, com proteção de privacidade.
 - **Flatpak & Flathub:** Configuração completa do ambiente Flatpak e repositório Flathub.
@@ -24,15 +24,60 @@ O **WELLARCH** é um script de shell robusto projetado para transformar uma inst
 
 ## Instalação
 
+### Opção 1: Instalação Rápida (Recomendado)
+
 Abra o terminal e execute:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh | bash
+```
+
+Esta é a forma mais simples e segura. O script:
+- Valida sua conexão com a internet
+- Baixa a versão mais recente do GitHub
+- Executa imediatamente sem necessidade de clonar o repositório
+
+### Opção 2: Instalação via Git
+
+Se preferir clonar o repositório:
 
 ```bash
 git clone https://github.com/well-santos/WELLARCH.git && cd WELLARCH && chmod +x wellarch.sh && ./wellarch.sh
 ```
 
+### Opção 3: Instalação com Argumentos (Curl)
+
+Se desejar passar argumentos ao script:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh | bash -s -- --yes --verbose
+```
+
+Ou para teste seguro:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh | bash -s -- --dry-run --yes
+```
+
 ---
 
 ## Uso
+
+### Instalador Automático (install.sh)
+
+O script `install.sh` é um wrapper que:
+- ✅ Valida a disponibilidade do `curl`
+- ✅ Verifica conectividade com a internet
+- ✅ Baixa a versão mais recente do WELLARCH
+- ✅ Baixa o script de desinstalação para `~/.local/bin/wellarch-remove.sh`
+- ✅ Executa o script principal com todos os argumentos passados
+
+**Uso direto:**
+```bash
+bash install.sh [OPÇÕES]
+bash install.sh --yes
+bash install.sh --dry-run --verbose
+```
 
 ### Menu Interativo de Configuração
 
@@ -66,11 +111,18 @@ Você pode aceitar os padrões pressionando Enter, ou escolher suas preferência
 
 ### Verificação de Pré-Requisitos
 
-Antes de iniciar, o script:
-- Valida que você está no Arch Linux
-- Verifica conectividade com internet
-- Verifica espaço em disco disponível (avisa se menos de 3GB)
-- Cria backup automático de `/etc/pacman.conf`
+Antes de iniciar, o script valida:
+- ✅ Você está em um sistema Arch Linux
+- ✅ Tem acesso a `sudo` (sem necessidade de ser root)
+- ✅ Conectividade com a internet (tenta ping em 8.8.8.8 e 1.1.1.1)
+- ✅ Espaço em disco disponível (avisa se menos de 3GB, permite continuar)
+- ✅ Cria backup automático de `/etc/pacman.conf`
+
+**Requisitos de Sistema:**
+- Arch Linux atualizado (com pacman funcional)
+- Acesso sudo (sem senha)
+- curl (para usar via instalador)
+- ~3GB de espaço livre (para Flatpaks e compilações)
 
 ### Argumentos de Linha de Comando
 
@@ -90,6 +142,24 @@ O script também suporta argumentos para maior controle e segurança:
 | `--help`, `-h` | Exibe a mensagem de ajuda e sai. |
 
 ### Exemplos de Uso
+
+#### Via Curl (Recomendado)
+
+```bash
+# Instalação rápida com valores padrão (interativo)
+curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh | bash
+
+# Instalação automática sem prompts
+curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh | bash -s -- --yes
+
+# Teste seguro (simula sem fazer mudanças)
+curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh | bash -s -- --dry-run --yes
+
+# Com modo verbose para debug
+curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh | bash -s -- --verbose
+```
+
+#### Via Arquivo Local
 
 ```bash
 # Modo seguro: simula sem fazer mudanças
@@ -137,9 +207,20 @@ O script foi desenvolvido com as seguintes práticas:
 
 ## Desinstalação
 
-Para remover todas as alterações feitas pelo WELLARCH, execute:
+### Opção 1: Script de Desinstalação (se instalado via curl)
+
+Se o script de desinstalação foi baixado:
 
 ```bash
+~/.local/bin/wellarch-remove.sh
+```
+
+### Opção 2: Desinstalação Manual
+
+Ou clone o repositório e execute:
+
+```bash
+git clone https://github.com/well-santos/WELLARCH.git && cd WELLARCH
 chmod +x wellarch-remove.sh
 ./wellarch-remove.sh
 ```
@@ -162,9 +243,12 @@ sudo chattr -i /etc/resolv.conf
 ```
 
 - **Não execute como root:** O script pede a senha do sudo conforme necessário.
+- **Use curl para facilidade:** `curl -sSL ... | bash` é o padrão da indústria.
+- **Git também funciona:** Se preferir clonar, a instalação clássica continua disponível.
 - **Pode levar tempo:** Dependendo de sua conexão, instalar o Paru e Flatpaks pode levar vários minutos.
-- **Ative DNS apenas se confiar na Cloudflare:** A configuração usa `1.1.1.1` e IPv6 da Cloudflare.
+- **DNS é opcional:** A configuração de DNS usa Cloudflare por padrão, mas pode ser pulada.
 - **Backup antes de usar:** Recomendado fazer um snapshot/backup antes de rodar em um sistema importante.
+- **Teste com --dry-run primeiro:** Use `--dry-run` para simular sem fazer mudanças.
 
 ---
 
@@ -175,4 +259,4 @@ Sugestões, bugs e pull requests são bem-vindos! Abra uma issue ou envie um PR.
 ---
 
 **Desenvolvido para:** Wesley  
-**Versão:** v13.1 (Refatorada com melhorias de segurança)
+**Versão:** v14.0 (Refatorada com instalação via curl e melhorias de segurança)
