@@ -36,6 +36,37 @@ Esta é a forma mais simples e segura. O script:
 - Valida sua conexão com a internet
 - Baixa a versão mais recente do GitHub
 - Executa imediatamente sem necessidade de clonar o repositório
+ 
+Observação de integridade: o instalador primeiro tenta verificar uma **assinatura GPG** (`wellarch.sh.sig`) situada ao lado do script. Se a assinatura GPG não estiver disponível, o instalador tentará validar um arquivo SHA256 (`wellarch.sh.sha256`). Caso nenhuma verificação esteja disponível, a execução continua, mas isso reduz a segurança.
+
+Para ativar a verificação GPG automática, publique a chave pública ASCII-armored em um caminho raw do GitHub (ex.: `pubkey.asc`) e exporte a variável `GPG_PUBKEY_URL` antes de executar o instalador. Exemplo:
+
+```bash
+export GPG_PUBKEY_URL="https://raw.githubusercontent.com/well-santos/WELLARCH/main/pubkey.asc"
+curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh | bash
+```
+
+Como criar e publicar a assinatura e a chave pública:
+
+1. Gere uma chave GPG (se ainda não tiver):
+
+```bash
+gpg --full-generate-key
+```
+
+2. Crie uma assinatura destacada para `wellarch.sh`:
+
+```bash
+gpg --armor --output wellarch.sh.sig --detach-sig wellarch.sh
+```
+
+3. Exporte sua chave pública e adicione ao repositório (ex.: `pubkey.asc`):
+
+```bash
+gpg --armor --output pubkey.asc --export <KEY_ID>
+```
+
+4. Faça upload de `wellarch.sh.sig` e `pubkey.asc` para o repositório (branch `main`) para que o instalador possa acessá-los via `raw.githubusercontent.com`.
 
 ### Opção 2: Instalação via Git
 
