@@ -8,7 +8,8 @@ IFS=$'\n\t'
 # Log tudo para arquivo
 LOGFILE="$HOME/.cache/wellarch/wellarch.log"
 mkdir -p "$(dirname "$LOGFILE")"
-exec > >(tee -a "$LOGFILE") 2>&1
+# Prefixa cada linha com timestamp ISO8601 e grava em logfile via tee
+exec > >(awk '{ print strftime("%Y-%m-%dT%H:%M:%S%z"), $0; fflush(); }' | tee -a "$LOGFILE") 2>&1
 
 # ==============================================================================
 # DEFINIÇÃO DE CORES
@@ -38,9 +39,10 @@ is_installed() {
 }
 
 on_err() {
-	local exit_code=${1:-$?}
-	local line=${BASH_LINENO[0]:-?}
-	echo -e "${VERMELHO}❌ Erro na linha ${line} (exit ${exit_code}).${NC}"
+	# Recebe opcionalmente linha e exit code (passados pela trap). Caso contrário usa BASH_LINENO
+	local line=${1:-${BASH_LINENO[0]:-?}}
+	local exit_code=${2:-$?}
+	echo -e "${VERMELHO}❌ Erro na linha ${line} (exit ${exit_code}).${NC}" >&2
 }
 
 parar_com_erro() {
@@ -64,8 +66,23 @@ cleanup() {
 		fi
 	done
 }
-trap 'on_err' ERR
-trap cleanup EXIT INT
+trap 'on_err ${LINENO} $?' ERR
+trap cleanup EXIT INT TERM
+
+# Inicia um keepalive do sudo em background; guarda PID para cleanup
+start_sudo_keepalive() {
+	# não inicia se já estiver rodando
+	if [[ -n "$SUDO_KEEPALIVE_PID" ]]; then
+		return 0
+	fi
+	(
+		while true; do
+			sudo -v 2>/dev/null || break
+			sleep 60
+		done
+	) &
+	SUDO_KEEPALIVE_PID=$!
+}
 
 # Helper to run commands and fail with message
 run_cmd() {
@@ -386,11 +403,7 @@ echo "💾 Verificando espaço em disco..."
 check_disk_space
 
 # Mantém sudo vivo (background) e guarda PID para cleanup
-while true; do
-	sudo -n true 2>/dev/null || break
-	sleep 60
-done &
-SUDO_KEEPALIVE_PID=$!
+start_sudo_keepalive
 
 # ---------------------------------------------------------
 # Atualizar mirrorlist com reflector (rápido e recomendado)
