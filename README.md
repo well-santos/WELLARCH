@@ -1,8 +1,21 @@
-# WELLARCH v14.0
+# WELLARCH v15.0.0
 
 Automação, pós-instalação e otimização para Arch Linux.
 
 O **WELLARCH** é um script de shell robusto projetado para transformar uma instalação base do Arch Linux em um sistema pronto para uso em produção, com foco em performance, segurança e facilidade de gerenciamento.
+
+---
+
+## ✨ Novidades da v15.0.0
+
+- **Skip Flags:** 8 novas flags para pular etapas específicas (veja abaixo)
+- **Indicadores de Progresso:** Exibe passo atual e total durante execução
+- **Mais Opções de DNS:** Agora com suporte a Google (8.8.8.8) e AdGuard
+- **Atualização do Sistema:** Nova etapa para atualizar pacotes antes de instalar
+- **Resumo de Configuração:** Exibe um sumário das opções antes de executar
+- **Cronômetro:** Mostra tempo total de execução ao final
+- **Notificação Desktop:** Alerta via notify-send quando a instalação termina
+- **Versionamento Semântico:** Adotado formato MAJOR.MINOR.PATCH
 
 ---
 
@@ -11,9 +24,10 @@ O **WELLARCH** é um script de shell robusto projetado para transformar uma inst
 - **AUR Helper:** Escolha entre Paru ou Yay (Instalação via Chaotic-AUR ou fallback binário do AUR).
 - **Chaotic AUR:** Integração automática do repositório Chaotic AUR para instalações mais rápidas e helpers pré-compilados.
 - **Pamac:** Escolha entre Pamac-all (GUI completa) ou Pamac-aur (CLI).
-- **Configuração de DNS:** Configuração de DNS Cloudflare (IPv4 e IPv6) via NetworkManager, com proteção de privacidade.
+- **Configuração de DNS:** Escolha entre Cloudflare, Quad9, Google ou AdGuard via NetworkManager.
 - **Flatpak & Flathub:** Configuração completa do ambiente Flatpak e repositório Flathub.
 - **LinuxToys:** Integração com ferramentas essenciais (download seguro com confirmação).
+- **Atualização do Sistema:** Atualiza todos os pacotes com `pacman -Syu` antes de instalar novos.
 - **Limpeza do Sistema:**
   - Remoção de pacotes órfãos com confirmação interativa.
   - Limpeza de cache do Pacman e Paru (mantendo 2 versões para rollback).
@@ -125,7 +139,9 @@ Antes da execução, o script apresenta um **menu interativo** com 4 perguntas:
 **3. Provedor de DNS:**
 - **a) Cloudflare** (padrão) - DNS 1.1.1.1, foco em privacidade
 - **b) Quad9** - DNS 9.9.9.9, foco em segurança
-- **c) Manter padrão** - Não fazer alterações de DNS
+- **c) Google** - DNS 8.8.8.8, alta disponibilidade
+- **d) AdGuard** - DNS 94.140.14.14, bloqueio de anúncios
+- **e) Manter padrão** - Não fazer alterações de DNS
 
 **4. Aplicativos Flatpak:**
 Escolha quais apps deseja instalar:
@@ -160,7 +176,7 @@ Antes de iniciar, o script valida:
 O script também suporta argumentos para maior controle e segurança:
 
 ```bash
-./wellarch.sh [--dry-run] [--yes] [--force-resolv-lock] [--help]
+./wellarch.sh [--dry-run] [--yes] [--force-resolv-lock] [--skip-*] [--help]
 ```
 
 ### Flags Disponíveis
@@ -170,6 +186,15 @@ O script também suporta argumentos para maior controle e segurança:
 | `--dry-run` | Simula a execução sem fazer alterações destrutivas no sistema. Ideal para testes e validação. |
 | `--yes`, `-y` | Assume "sim" automaticamente para todos os prompts interativos (sem perguntar). |
 | `--force-resolv-lock` | **Ativa** o travamento de `/etc/resolv.conf` com `chattr +i`. ⚠️ Use com cuidado — pode dificultar alterações futuras. |
+| `--skip-update` | Pula a etapa de atualização do sistema (pacman -Syu). |
+| `--skip-mirrors` | Pula a otimização de mirrors com reflector. |
+| `--skip-chaotic` | Pula a instalação do repositório Chaotic AUR. |
+| `--skip-flatpak` | Pula a instalação do Flatpak e aplicativos Flathub. |
+| `--skip-pamac` | Pula a instalação do Pamac (gerenciador de pacotes gráfico). |
+| `--skip-dns` | Pula a configuração de DNS. |
+| `--skip-linuxtoys` | Pula a instalação do LinuxToys. |
+| `--skip-cleanup` | Pula a limpeza final do sistema. |
+| `--verbose` | Exibe saída detalhada durante a execução. |
 | `--help`, `-h` | Exibe a mensagem de ajuda e sai. |
 
 ### Exemplos de Uso
@@ -185,6 +210,9 @@ curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh
 
 # Teste seguro (simula sem fazer mudanças)
 curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh | bash -s -- --dry-run --yes
+
+# Pular etapas específicas
+curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh | bash -s -- --skip-flatpak --skip-pamac
 
 # Com modo verbose para debug
 curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh | bash -s -- --verbose
@@ -202,8 +230,11 @@ curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh
 # Ativar travamento do resolv.conf
 ./wellarch.sh --force-resolv-lock
 
+# Pular várias etapas
+./wellarch.sh --skip-update --skip-mirrors --skip-cleanup
+
 # Combinar flags
-./wellarch.sh --dry-run --yes
+./wellarch.sh --dry-run --yes --skip-flatpak
 ```
 
 ---
@@ -211,11 +242,13 @@ curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh
 ## Relatório de Instalação
 
 Ao final da execução, o script mostra um **relatório detalhado** com:
+- ⏱️ **Tempo total** de execução
 - Configurações selecionadas (AUR Helper, Pamac, DNS)
 - Lista de pacotes instalados
 - Lista de aplicativos Flatpak instalados
 - Itens que falharam (se houver)
 - Localização do log completo
+- 🔔 **Notificação desktop** via notify-send (se disponível)
 
 ---
 
@@ -290,4 +323,4 @@ Sugestões, bugs e pull requests são bem-vindos! Abra uma issue ou envie um PR.
 ---
 
 **Desenvolvido para:** Wesley  
-**Versão:** v14.0 (Refatorada com instalação via curl e melhorias de segurança)
+**Versão:** v15.0.0 (Skip flags, indicadores de progresso, mais opções DNS, cronômetro)

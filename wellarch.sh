@@ -34,8 +34,23 @@ if [ ! -t 1 ]; then
 	NC=''
 fi
 
-# Versão do script
-VERSION="14.0"
+# Versão do script (Semantic Versioning)
+VERSION="15.0.0"
+
+# Contadores de progresso
+TOTAL_STEPS=9
+CURRENT_STEP=0
+
+# Função para mostrar progresso
+show_progress() {
+	local step_name="$1"
+	((CURRENT_STEP++))
+	echo ""
+	echo -e "${AZUL}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+	echo -e "${ROXO}[${CURRENT_STEP}/${TOTAL_STEPS}]${NC} ${VERDE}${step_name}${NC}"
+	echo -e "${AZUL}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+	log_to_file "[${CURRENT_STEP}/${TOTAL_STEPS}] ${step_name}"
+}
 
 # Logging helpers
 VERBOSE=false
@@ -144,15 +159,26 @@ check_disk_space() {
 	fi
 }
 
+# Salvar IFS original para restaurar depois
+ORIGINAL_IFS="$IFS"
+
 # Inicializa arrays para rastrear instalações
 INSTALLED_PACKAGES=()
 INSTALLED_FLATPAKS=()
 FAILED_ITEMS=()
 
-# Argumentos
+# Argumentos e flags de skip
 DRY_RUN=false
 ASSUME_YES=false
 FORCE_RESOLV_LOCK=false
+SKIP_UPDATE=false
+SKIP_MIRRORS=false
+SKIP_CHAOTIC=false
+SKIP_FLATPAK=false
+SKIP_PAMAC=false
+SKIP_DNS=false
+SKIP_LINUXTOYS=false
+SKIP_CLEANUP=false
 while [ $# -gt 0 ]; do
 	case "${1-}" in
 	--dry-run)
@@ -175,40 +201,78 @@ while [ $# -gt 0 ]; do
 		FORCE_RESOLV_LOCK=true
 		shift
 		;;
+	--skip-update)
+		SKIP_UPDATE=true
+		shift
+		;;
+	--skip-mirrors)
+		SKIP_MIRRORS=true
+		shift
+		;;
+	--skip-chaotic)
+		SKIP_CHAOTIC=true
+		shift
+		;;
+	--skip-flatpak)
+		SKIP_FLATPAK=true
+		shift
+		;;
+	--skip-pamac)
+		SKIP_PAMAC=true
+		shift
+		;;
+	--skip-dns)
+		SKIP_DNS=true
+		shift
+		;;
+	--skip-linuxtoys)
+		SKIP_LINUXTOYS=true
+		shift
+		;;
+	--skip-cleanup)
+		SKIP_CLEANUP=true
+		shift
+		;;
 	--help | -h)
 		cat <<EOF
-${AZUL}WELLARCH v14.0 - Automação para Arch Linux${NC}
+${AZUL}WELLARCH v${VERSION} - Automação para Arch Linux${NC}
 
 ${AMARELO}USO:${NC}
   $0 [OPÇÕES]
 
-${AMARELO}OPÇÕES:${NC}
-  --dry-run              Simula execução sem fazer alterações destrutivas
-    --verbose              Ativa mensagens de debug (mais verboso)
-    --version              Exibe versão do script
-  --yes, -y              Assume "sim" para todos os prompts (modo automático)
-  --force-resolv-lock    Trava /etc/resolv.conf com chattr +i (não recomendado)
+${AMARELO}OPÇÕES GERAIS:${NC}
+  --dry-run              Simula execução sem fazer alterações
+  --verbose              Ativa mensagens de debug
+  --version              Exibe versão do script
+  --yes, -y              Assume "sim" para todos os prompts
+  --force-resolv-lock    Trava /etc/resolv.conf com chattr +i
   --help, -h             Exibe este menu de ajuda
 
+${AMARELO}OPÇÕES DE SKIP (pular etapas):${NC}
+  --skip-update          Pula atualização do sistema (pacman -Syu)
+  --skip-mirrors         Pula otimização de mirrors (reflector)
+  --skip-chaotic         Pula configuração do Chaotic AUR
+  --skip-flatpak         Pula instalação de Flatpak e apps
+  --skip-pamac           Pula instalação do Pamac
+  --skip-dns             Pula configuração de DNS
+  --skip-linuxtoys       Pula instalação do LinuxToys
+  --skip-cleanup         Pula limpeza do sistema
+
 ${AMARELO}EXEMPLOS:${NC}
-  # Executar normalmente com menu interativo:
+  # Executar normalmente:
   $0
 
-  # Modo automático (sem prompts):
+  # Modo automático:
   $0 --yes
 
-  # Simular execução:
-  $0 --dry-run
+  # Pular DNS e Flatpak:
+  $0 --skip-dns --skip-flatpak
 
-  # Combinar opções:
+  # Simular execução:
   $0 --dry-run --yes
 
 ${AMARELO}DESINSTALAÇÃO:${NC}
-  Para remover as alterações do WELLARCH, use:
   ./wellarch-remove.sh
-
-${AMARELO}DOCUMENTAÇÃO:${NC}
-  Veja o arquivo README.md para informações detalhadas.
 EOF
 		exit 0
 		;;
@@ -232,7 +296,7 @@ cat <<"EOF"
 ║    ╚══╝╚══╝ ╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝      ║ 
 ║                                                                           ║
 ║              Automação, Pós-Instalação e Otimização                       ║
-║                        para Arch Linux v14.0                              ║
+║                        para Arch Linux v15.0                            ║
 ║                                                                           ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
 EOF
@@ -318,13 +382,15 @@ esac
 # Menu para escolher DNS (com cores)
 echo ""
 echo -e "${AMARELO}3. Qual provedor de DNS você deseja?${NC}"
-echo -e "   ${VERDE}a)${NC} Cloudflare (padrão, 1.1.1.1)"
-echo -e "   ${VERDE}b)${NC} Quad9 (segurança, 9.9.9.9)"
-echo -e "   ${VERDE}c)${NC} Manter padrão do sistema (sem alterações)"
+echo -e "   ${VERDE}a)${NC} Cloudflare (padrão, 1.1.1.1) - Privacidade"
+echo -e "   ${VERDE}b)${NC} Quad9 (9.9.9.9) - Segurança"
+echo -e "   ${VERDE}c)${NC} Google (8.8.8.8) - Velocidade"
+echo -e "   ${VERDE}d)${NC} AdGuard (94.140.14.14) - Bloqueia anúncios"
+echo -e "   ${VERDE}e)${NC} Manter padrão do sistema (sem alterações)"
 if [[ "$ASSUME_YES" == true ]]; then
 	dns_choice='a'
 else
-	read -r -p "Escolha (a/b/c) [a]: " dns_choice
+	read -r -p "Escolha (a/b/c/d/e) [a]: " dns_choice
 	dns_choice="${dns_choice:-a}"
 fi
 case "${dns_choice,,}" in
@@ -333,7 +399,17 @@ b | quad9)
 	DNS_SERVERS="9.9.9.9,149.112.112.112,2620:fe::fe,2620:fe::9"
 	echo -e "${VERDE}✓ Escolhido: Quad9${NC}"
 	;;
-c | none | skip)
+c | google)
+	DNS_PROVIDER="google"
+	DNS_SERVERS="8.8.8.8,8.8.4.4,2001:4860:4860::8888,2001:4860:4860::8844"
+	echo -e "${VERDE}✓ Escolhido: Google DNS${NC}"
+	;;
+d | adguard)
+	DNS_PROVIDER="adguard"
+	DNS_SERVERS="94.140.14.14,94.140.15.15,2a10:50c0::ad1:ff,2a10:50c0::ad2:ff"
+	echo -e "${VERDE}✓ Escolhido: AdGuard DNS${NC}"
+	;;
+e | none | skip)
 	DNS_PROVIDER="none"
 	DNS_SERVERS=""
 	echo -e "${VERDE}✓ Escolhido: Manter padrão do sistema${NC}"
@@ -385,11 +461,39 @@ echo -e "${AZUL}Configurações confirmadas!${NC}"
 echo "-------------------------------------------------------------"
 
 # ==============================================================================
+# RESUMO DAS CONFIGURAÇÕES ANTES DE EXECUTAR
+# ==============================================================================
+echo ""
+echo -e "${ROXO}╔═════════════════════════════════════════════════════════╗${NC}"
+echo -e "${ROXO}║${NC}   ${AMARELO}📝 RESUMO DAS CONFIGURAÇÕES${NC}                          ${ROXO}║${NC}"
+echo -e "${ROXO}╠═════════════════════════════════════════════════════════╣${NC}"
+echo -e "${ROXO}║${NC}   AUR Helper:     ${VERDE}${AUR_HELPER}${NC}"
+echo -e "${ROXO}║${NC}   Pamac:          ${VERDE}${PAMAC_PKG}${NC}"
+echo -e "${ROXO}║${NC}   DNS:            ${VERDE}${DNS_PROVIDER}${NC}"
+echo -e "${ROXO}║${NC}   Flatpaks:       ${VERDE}${#SELECTED_APPS[@]} selecionado(s)${NC}"
+echo -e "${ROXO}║${NC}   Dry-run:        ${VERDE}${DRY_RUN}${NC}"
+echo -e "${ROXO}╚═════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+if [[ "$ASSUME_YES" != true ]]; then
+	read -r -p "Confirmar e iniciar instalação? (y/n): " final_confirm
+	if [[ ! "$final_confirm" =~ ^[yY]$ ]]; then
+		echo -e "${VERMELHO}❌ Operação cancelada.${NC}"
+		exit 0
+	fi
+fi
+
+# Registrar início no log
+START_TIME=$(date +%s)
+log_to_file "=== WELLARCH v${VERSION} iniciado ==="
+log_to_file "Configurações: AUR=${AUR_HELPER} PAMAC=${PAMAC_PKG} DNS=${DNS_PROVIDER} FLATPAKS=${#SELECTED_APPS[@]}"
+
+# ==============================================================================
 # INÍCIO DA EXECUÇÃO
 # ==============================================================================
 
 echo ""
-echo -e "${AMARELO}🚀 Iniciando WELLARCH v14.0...${NC}"
+echo -e "${AMARELO}🚀 Iniciando WELLARCH v${VERSION}...${NC}"
 
 # 1. Checagem de Root
 if [ "$EUID" -eq 0 ]; then
@@ -420,9 +524,43 @@ check_disk_space
 start_sudo_keepalive
 
 # ---------------------------------------------------------
-# Atualizar mirrorlist com reflector (rápido e recomendado)
+# 1. ATUALIZAÇÃO DO SISTEMA (pacman -Syu)
+# ---------------------------------------------------------
+update_system() {
+	show_progress "Atualização do Sistema"
+	
+	if [[ "$SKIP_UPDATE" == true ]]; then
+		echo -e "${AMARELO}⏭️  Pulando atualização do sistema (--skip-update)${NC}"
+		return 0
+	fi
+	
+	if [[ "${DRY_RUN:-false}" == true ]]; then
+		echo -e "${AMARELO}(dry-run) pulando pacman -Syu${NC}"
+		return 0
+	fi
+	
+	echo "🔄 Atualizando sistema com pacman -Syu..."
+	if sudo_run pacman -Syu --noconfirm; then
+		echo -e "${VERDE}✅ Sistema atualizado!${NC}"
+		INSTALLED_PACKAGES+=("System Update")
+	else
+		echo -e "${AMARELO}⚠️  Aviso durante atualização do sistema.${NC}"
+	fi
+}
+
+update_system
+
+# ---------------------------------------------------------
+# 2. Atualizar mirrorlist com reflector (rápido e recomendado)
 # ---------------------------------------------------------
 setup_reflector() {
+	show_progress "Otimização de Mirrors"
+	
+	if [[ "$SKIP_MIRRORS" == true ]]; then
+		echo -e "${AMARELO}⏭️  Pulando otimização de mirrors (--skip-mirrors)${NC}"
+		return 0
+	fi
+	
 	if [[ "${DRY_RUN:-false}" == true ]]; then
 		echo -e "${AMARELO}(dry-run) pulando atualização de mirrors com reflector${NC}"
 		return 0
@@ -452,9 +590,16 @@ setup_reflector() {
 setup_reflector
 
 # ---------------------------------------------------------
-# 2. CHAOTIC AUR
+# 3. CHAOTIC AUR
 # ---------------------------------------------------------
 setup_chaotic_aur() {
+	show_progress "Configuração do Chaotic AUR"
+	
+	if [[ "$SKIP_CHAOTIC" == true ]]; then
+		echo -e "${AMARELO}⏭️  Pulando Chaotic AUR (--skip-chaotic)${NC}"
+		return 0
+	fi
+	
 	if grep -q "chaotic-aur" /etc/pacman.conf; then
 		echo "✅ Chaotic AUR já está configurado. Pulando."
 		return 0
@@ -476,9 +621,11 @@ setup_chaotic_aur() {
 setup_chaotic_aur
 
 # ---------------------------------------------------------
-# 3. AUR HELPER (PARU OU YAY)
+# 4. AUR HELPER (PARU OU YAY)
 # ---------------------------------------------------------
 install_aur_helper() {
+	show_progress "Instalação do AUR Helper"
+	
 	if is_installed "$AUR_HELPER"; then
 		echo "✅ $AUR_HELPER já está instalado. Pulando."
 		return 0
@@ -521,9 +668,16 @@ install_aur_helper() {
 install_aur_helper
 
 # ---------------------------------------------------------
-# 4. FLATPAK & FLATHUB
+# 5. FLATPAK & FLATHUB
 # ---------------------------------------------------------
 setup_flatpak() {
+	show_progress "Configuração do Flatpak"
+	
+	if [[ "$SKIP_FLATPAK" == true ]]; then
+		echo -e "${AMARELO}⏭️  Pulando Flatpak (--skip-flatpak)${NC}"
+		return 0
+	fi
+	
 	if ! is_installed flatpak; then
 		echo "📦 Instalando Flatpak..."
 		sudo_run pacman -S flatpak --noconfirm
@@ -544,9 +698,13 @@ setup_flatpak() {
 setup_flatpak
 
 # ---------------------------------------------------------
-# 5. APPS FLATPAK
+# 6. APPS FLATPAK
 # ---------------------------------------------------------
-if [[ ${#SELECTED_APPS[@]} -gt 0 ]]; then
+show_progress "Instalação de Apps Flatpak"
+
+if [[ "$SKIP_FLATPAK" == true ]]; then
+	echo -e "${AMARELO}⏭️  Pulando apps Flatpak (--skip-flatpak)${NC}"
+elif [[ ${#SELECTED_APPS[@]} -gt 0 ]]; then
 echo "📱 Instalando aplicativos Flatpak selecionados..."
 for APP in "${SELECTED_APPS[@]}"; do
 	if flatpak list --app | grep -q "$APP"; then
@@ -576,9 +734,13 @@ else
 fi
 
 # ---------------------------------------------------------
-# 6. PAMAC (via AUR Helper)
+# 7. PAMAC (via AUR Helper)
 # ---------------------------------------------------------
-if is_installed pamac; then
+show_progress "Instalação do Pamac"
+
+if [[ "$SKIP_PAMAC" == true ]]; then
+	echo -e "${AMARELO}⏭️  Pulando Pamac (--skip-pamac)${NC}"
+elif is_installed pamac; then
 	echo "✅ Pamac já está instalado. Pulando."
 else
 	echo "🛍️  Instalando $PAMAC_PKG..."
@@ -594,11 +756,15 @@ else
 fi
 
 # ---------------------------------------------------------
-# 7. LINUXTOYS
+# 8. LINUXTOYS
 # ---------------------------------------------------------
+show_progress "Instalação do LinuxToys"
+
 MARKER_FILE="$HOME/.config/linuxtoys_installed.marker"
 
-if [ -f "$MARKER_FILE" ]; then
+if [[ "$SKIP_LINUXTOYS" == true ]]; then
+	echo -e "${AMARELO}⏭️  Pulando LinuxToys (--skip-linuxtoys)${NC}"
+elif [ -f "$MARKER_FILE" ]; then
 	echo "✅ LinuxToys já foi executado. Pulando."
 else
 	echo "🧸 Instalando LinuxToys..."
@@ -648,9 +814,16 @@ else
 fi
 
 # ---------------------------------------------------------
-# 8. DNS CLOUDFLARE (SOLUÇÃO DEFINITIVA NETWORK MANAGER)
+# 9. DNS (SOLUÇÃO DEFINITIVA NETWORK MANAGER)
 # ---------------------------------------------------------
 setup_dns() {
+	show_progress "Configuração de DNS"
+	
+	if [[ "$SKIP_DNS" == true ]]; then
+		echo -e "${AMARELO}⏭️  Pulando configuração de DNS (--skip-dns)${NC}"
+		return 0
+	fi
+	
 	if [[ "$DNS_PROVIDER" != "none" ]]; then
 		echo "🌐 Configurando DNS..."
 		NM_CONF="/etc/NetworkManager/conf.d/99-dns-provider.conf"
@@ -709,10 +882,18 @@ EOF
 
 setup_dns
 
+# Restaurar IFS original
+IFS="$ORIGINAL_IFS"
+
 # ---------------------------------------------------------
-# 9. LIMPEZA
+# 10. LIMPEZA
 # ---------------------------------------------------------
-echo ""
+show_progress "Limpeza do Sistema"
+
+if [[ "$SKIP_CLEANUP" == true ]]; then
+	echo -e "${AMARELO}⏭️  Pulando limpeza (--skip-cleanup)${NC}"
+else
+
 echo -e "${AZUL}🧹 Limpeza do Sistema...${NC}"
 
 sudo_run pacman -S --needed pacman-contrib --noconfirm &>/dev/null
@@ -759,14 +940,25 @@ flatpak uninstall --unused -y >/dev/null 2>&1
 echo "   📜 Limpando logs..."
 sudo_run journalctl --vacuum-time=7d >/dev/null 2>&1
 
+fi # Fim do bloco SKIP_CLEANUP
+
 # ==============================================================================
 # RELATÓRIO FINAL
 # ==============================================================================
+
+# Calcular tempo de execução
+END_TIME=$(date +%s)
+ELAPSED=$((END_TIME - START_TIME))
+ELAPSED_MIN=$((ELAPSED / 60))
+ELAPSED_SEC=$((ELAPSED % 60))
 
 echo ""
 echo -e "${AZUL}════════════════════════════════════════════════════════════${NC}"
 echo -e "${VERDE}✨ RELATÓRIO FINAL DA INSTALAÇÃO ✨${NC}"
 echo -e "${AZUL}════════════════════════════════════════════════════════════${NC}"
+echo ""
+
+echo -e "${AMARELO}⏱️  TEMPO DE EXECUÇÃO:${NC} ${ELAPSED_MIN}m ${ELAPSED_SEC}s"
 echo ""
 
 echo -e "${AMARELO}📋 CONFIGURAÇÕES SELECIONADAS:${NC}"
@@ -785,8 +977,8 @@ fi
 
 if [[ ${#INSTALLED_FLATPAKS[@]} -gt 0 ]]; then
 	echo -e "${AMARELO}📱 APLICATIVOS FLATPAK INSTALADOS: ${#INSTALLED_FLATPAKS[@]}${NC}"
-	for flatpak in "${INSTALLED_FLATPAKS[@]}"; do
-		echo -e "   ${VERDE}✓${NC} $flatpak"
+	for flatpak_app in "${INSTALLED_FLATPAKS[@]}"; do
+		echo -e "   ${VERDE}✓${NC} $flatpak_app"
 	done
 	echo ""
 fi
@@ -805,3 +997,12 @@ echo -e "${AZUL}═════════════════════�
 echo ""
 echo -e "${AMARELO}📝 LOG COMPLETO DISPONÍVEL EM:${NC} $LOGFILE"
 echo ""
+
+# Gravar fim no log
+log_to_file "=== WELLARCH v${VERSION} finalizado em ${ELAPSED_MIN}m ${ELAPSED_SEC}s ==="
+log_to_file "Pacotes instalados: ${#INSTALLED_PACKAGES[@]} | Flatpaks: ${#INSTALLED_FLATPAKS[@]} | Falhas: ${#FAILED_ITEMS[@]}"
+
+# Notificação desktop (se disponível)
+if is_installed notify-send; then
+	notify-send -i dialog-information "WELLARCH v${VERSION}" "Setup completo em ${ELAPSED_MIN}m ${ELAPSED_SEC}s! ✨" 2>/dev/null || true
+fi
