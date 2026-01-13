@@ -44,7 +44,7 @@ CURRENT_STEP=0
 # Função para mostrar progresso
 show_progress() {
 	local step_name="$1"
-	((CURRENT_STEP++))
+	CURRENT_STEP=$((CURRENT_STEP + 1))
 	echo ""
 	echo -e "${AZUL}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 	echo -e "${ROXO}[${CURRENT_STEP}/${TOTAL_STEPS}]${NC} ${VERDE}${step_name}${NC}"
