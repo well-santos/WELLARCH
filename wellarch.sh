@@ -5,11 +5,9 @@ set -euo pipefail
 set -o errtrace
 IFS=$'\n\t'
 
-# Log tudo para arquivo
+# Log tudo para arquivo (sem redirecionar stdout para evitar problemas de exibição)
 LOGFILE="$HOME/.cache/wellarch/wellarch.log"
 mkdir -p "$(dirname "$LOGFILE")"
-# Prefixa cada linha com timestamp ISO8601 e grava em logfile via tee
-exec > >(awk '{ print strftime("%Y-%m-%dT%H:%M:%S%z"), $0; fflush(); }' | tee -a "$LOGFILE") 2>&1
 
 # ==============================================================================
 # DEFINIÇÃO DE CORES
@@ -573,15 +571,6 @@ done
 if is_installed pamac; then
 	echo "✅ Pamac já está instalado. Pulando."
 else
-	# Garantir toolchain para builds do AUR
-	sudo_run pacman -S --needed base-devel --noconfirm
-
-	# Fix: Pré-instalar dependências do Snap para evitar erro de 'snapd lib' no build do pamac-all
-	if [[ "$PAMAC_PKG" == "pamac-all" ]]; then
-		echo "📦 Pré-instalando dependências do Snap (snapd-glib) para evitar erros de compilação..."
-		sudo_run pacman -S --needed snapd snapd-glib --noconfirm
-	fi
-
 	echo "🛍️  Instalando $PAMAC_PKG..."
 	if [[ "${DRY_RUN:-false}" == true ]]; then
 		echo "(dry-run) pulando instalação do $PAMAC_PKG"
