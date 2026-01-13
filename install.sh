@@ -154,6 +154,12 @@ main() {
     # Validations
     check_curl
     check_internet
+
+    # Garantir TTY para menus interativos quando rodado via curl | bash
+    if [ ! -t 0 ] && [ ! -e /dev/tty ]; then
+        log_error "Ambiente sem TTY detectado. Abra um terminal interativo e rode novamente."
+        exit 1
+    fi
     
     # Check if running as root
     if [[ $EUID -eq 0 ]]; then
@@ -177,7 +183,13 @@ main() {
     echo ""
     
     # Execute with all passed arguments
-    bash "$script_path" "$@"
+    # Fix: Reconectar stdin ao TTY para permitir interatividade quando rodado via pipe (curl | bash)
+    if [ ! -t 0 ] && [ -e /dev/tty ]; then
+        bash "$script_path" "$@" < /dev/tty
+    else
+        bash "$script_path" "$@"
+    fi
+
     exit_code=$?
     
     exit $exit_code

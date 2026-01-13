@@ -21,6 +21,16 @@ AZUL='\033[0;36m' # Ciano
 ROXO='\033[0;35m'
 NC='\033[0m' # Sem cor
 
+# Desativa cores em ambientes não interativos para evitar saída "estranha"
+if [ ! -t 1 ]; then
+	VERDE=''
+	VERMELHO=''
+	AMARELO=''
+	AZUL=''
+	ROXO=''
+	NC=''
+fi
+
 # Versão do script
 VERSION="14.0"
 
@@ -116,7 +126,7 @@ check_disk_space() {
 	local available
 	available=$(df "$HOME" | tail -1 | awk '{print $4}')
 	local required=$((3 * 1024 * 1024)) # 3GB em KB
-	if [ "$available" -lt "$required" ]; then
+	if [[ "$available" -lt "$required" ]]; then
 		echo -e "${AMARELO}⚠️  AVISO: Apenas $(numfmt --to=iec-i --suffix=B $((available * 1024))) disponíveis.${NC}"
 		echo -e "${AMARELO}Recomendado: 3GB ou mais para Flatpaks e outras aplicações.${NC}"
 		if [ "$ASSUME_YES" = true ]; then
@@ -240,7 +250,7 @@ echo -e "   8. Limpeza do Sistema"
 echo -e "-------------------------------------------------------------"
 echo ""
 
-if [ "$ASSUME_YES" = true ]; then
+if [[ "$ASSUME_YES" == true ]]; then
 	confirm='y'
 else
 	read -r -p "Deseja executar esse script? (y/n): " confirm
@@ -263,7 +273,7 @@ echo ""
 echo -e "${AMARELO}1. Qual AUR Helper você deseja?${NC}"
 echo -e "   ${VERDE}a)${NC} Paru (padrão, mais rápido)"
 echo -e "   ${VERDE}b)${NC} Yay (alternativa)"
-if [ "$ASSUME_YES" = true ]; then
+if [[ "$ASSUME_YES" == true ]]; then
 	aur_choice='a'
 else
 	read -r -p "Escolha (a/b) [a]: " aur_choice
@@ -285,7 +295,7 @@ echo ""
 echo -e "${AMARELO}2. Qual versão do Pamac você deseja?${NC}"
 echo -e "   ${VERDE}a)${NC} Pamac-all (com GUI + Flatpak + AUR, padrão)"
 echo -e "   ${VERDE}b)${NC} Pamac-aur (apenas CLI + AUR)"
-if [ "$ASSUME_YES" = true ]; then
+if [[ "$ASSUME_YES" == true ]]; then
 	pamac_choice='a'
 else
 	read -r -p "Escolha (a/b) [a]: " pamac_choice
@@ -308,7 +318,7 @@ echo -e "${AMARELO}3. Qual provedor de DNS você deseja?${NC}"
 echo -e "   ${VERDE}a)${NC} Cloudflare (padrão, 1.1.1.1)"
 echo -e "   ${VERDE}b)${NC} Quad9 (segurança, 9.9.9.9)"
 echo -e "   ${VERDE}c)${NC} Manter padrão do sistema (sem alterações)"
-if [ "$ASSUME_YES" = true ]; then
+if [[ "$ASSUME_YES" == true ]]; then
 	dns_choice='a'
 else
 	read -r -p "Escolha (a/b/c) [a]: " dns_choice
@@ -349,7 +359,7 @@ SELECTED_APPS=()
 for app_info in "${AVAILABLE_APPS[@]}"; do
 	app_id="${app_info%%:*}"
 	app_name="${app_info##*:}"
-	if [ "$ASSUME_YES" = true ]; then
+	if [[ "$ASSUME_YES" == true ]]; then
 		SELECTED_APPS+=("$app_id")
 	else
 		read -r -p "Instalar $app_name? (y/n) [y]: " install_app
@@ -425,12 +435,12 @@ setup_reflector() {
 	fi
 
 	if is_installed reflector; then
-		echo "🔄 Atualizando /etc/pacman.d/mirrorlist com reflector (mirrors rápidos)..."
+		echo "🔄 Atualizando /etc/pacman.d/mirrorlist priorizando Brasil..."
 		sudo_run cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.wellarch.bak || true
-		sudo_run reflector --latest 20 --protocol https --sort rate --age 12 --save /etc/pacman.d/mirrorlist || {
-			echo -e "${AMARELO}⚠️ Falha ao executar reflector. Pulando.${NC}"
+		if ! sudo_run reflector --country Brazil --protocol https --latest 20 --sort rate --age 24 --save /etc/pacman.d/mirrorlist; then
+			echo -e "${AMARELO}⚠️ Falha ao executar reflector com país Brasil; mantendo mirrorlist atual.${NC}"
 			return 1
-		}
+		fi
 		sudo_run pacman -Syy --noconfirm || true
 	fi
 }
@@ -471,7 +481,7 @@ install_aur_helper() {
 	fi
 	echo "📦 Instalando $AUR_HELPER..."
 
-	if sudo_run pacman -S "$AUR_HELPER" --noconfirm 2>/dev/null; then
+	if sudo pacman -S "$AUR_HELPER" --noconfirm 2>/dev/null; then
 		echo -e "${VERDE}✅ $AUR_HELPER instalado via repositório!${NC}"
 		INSTALLED_PACKAGES+=("$AUR_HELPER")
 		return 0
@@ -563,8 +573,17 @@ done
 if is_installed pamac; then
 	echo "✅ Pamac já está instalado. Pulando."
 else
+	# Garantir toolchain para builds do AUR
+	sudo_run pacman -S --needed base-devel --noconfirm
+
+	# Fix: Pré-instalar dependências do Snap para evitar erro de 'snapd lib' no build do pamac-all
+	if [[ "$PAMAC_PKG" == "pamac-all" ]]; then
+		echo "📦 Pré-instalando dependências do Snap (snapd-glib) para evitar erros de compilação..."
+		sudo_run pacman -S --needed snapd snapd-glib --noconfirm
+	fi
+
 	echo "🛍️  Instalando $PAMAC_PKG..."
-	if [[ "$DRY_RUN" == true ]]; then
+	if [[ "${DRY_RUN:-false}" == true ]]; then
 		echo "(dry-run) pulando instalação do $PAMAC_PKG"
 	else
 		if ! $AUR_HELPER -S "$PAMAC_PKG" --noconfirm; then
@@ -595,11 +614,11 @@ else
 		FAILED_ITEMS+=("LinuxToys")
 	else
 		echo "Script LinuxToys salvo em: $lt_script"
-		if [ "${DRY_RUN:-false}" = true ]; then
+		if [[ "${DRY_RUN:-false}" == true ]]; then
 			echo -e "${AMARELO}(dry-run) não executando instalador do LinuxToys${NC}"
 		else
 			LT_OK=false
-			if [ "$ASSUME_YES" = true ]; then
+			if [[ "$ASSUME_YES" == true ]]; then
 				if bash "$lt_script"; then
 					LT_OK=true
 				fi
