@@ -13,6 +13,15 @@ AMARELO='\033[1;33m'
 AZUL='\033[0;36m'
 NC='\033[0m'
 
+# Desativa cores em ambientes não interativos
+if [ ! -t 1 ]; then
+    VERDE=''
+    VERMELHO=''
+    AMARELO=''
+    AZUL=''
+    NC=''
+fi
+
 # Configuration
 GITHUB_REPO="well-santos/WELLARCH"
 GITHUB_BRANCH="main"
@@ -191,6 +200,12 @@ main() {
     fi
 
     exit_code=$?
+    
+    if [ $exit_code -eq 0 ]; then
+        log_success "WELLARCH finalizado com sucesso!"
+    else
+        log_error "WELLARCH terminou com erros (código: $exit_code)"
+    fi
     
     exit $exit_code
 }

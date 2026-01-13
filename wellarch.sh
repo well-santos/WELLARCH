@@ -9,6 +9,11 @@ IFS=$'\n\t'
 LOGFILE="$HOME/.cache/wellarch/wellarch.log"
 mkdir -p "$(dirname "$LOGFILE")"
 
+# Função para gravar log com timestamp
+log_to_file() {
+	echo "$(date '+%Y-%m-%dT%H:%M:%S%z') $*" >> "$LOGFILE"
+}
+
 # ==============================================================================
 # DEFINIÇÃO DE CORES
 # ==============================================================================
@@ -330,6 +335,7 @@ b | quad9)
 	;;
 c | none | skip)
 	DNS_PROVIDER="none"
+	DNS_SERVERS=""
 	echo -e "${VERDE}✓ Escolhido: Manter padrão do sistema${NC}"
 	;;
 a | cloudflare | *)
@@ -540,6 +546,7 @@ setup_flatpak
 # ---------------------------------------------------------
 # 5. APPS FLATPAK
 # ---------------------------------------------------------
+if [[ ${#SELECTED_APPS[@]} -gt 0 ]]; then
 echo "📱 Instalando aplicativos Flatpak selecionados..."
 for APP in "${SELECTED_APPS[@]}"; do
 	if flatpak list --app | grep -q "$APP"; then
@@ -564,6 +571,9 @@ for APP in "${SELECTED_APPS[@]}"; do
 		fi
 	fi
 done
+else
+	echo "ℹ️  Nenhum aplicativo Flatpak selecionado para instalar."
+fi
 
 # ---------------------------------------------------------
 # 6. PAMAC (via AUR Helper)
@@ -603,10 +613,10 @@ else
 		FAILED_ITEMS+=("LinuxToys")
 	else
 		echo "Script LinuxToys salvo em: $lt_script"
+		LT_OK=false
 		if [[ "${DRY_RUN:-false}" == true ]]; then
 			echo -e "${AMARELO}(dry-run) não executando instalador do LinuxToys${NC}"
 		else
-			LT_OK=false
 			if [[ "$ASSUME_YES" == true ]]; then
 				if bash "$lt_script"; then
 					LT_OK=true
@@ -641,60 +651,60 @@ fi
 # 8. DNS CLOUDFLARE (SOLUÇÃO DEFINITIVA NETWORK MANAGER)
 # ---------------------------------------------------------
 setup_dns() {
-if [[ "$DNS_PROVIDER" != "none" ]]; then
-	echo "🌐 Configurando DNS..."
-	NM_CONF="/etc/NetworkManager/conf.d/99-dns-provider.conf"
+	if [[ "$DNS_PROVIDER" != "none" ]]; then
+		echo "🌐 Configurando DNS..."
+		NM_CONF="/etc/NetworkManager/conf.d/99-dns-provider.conf"
 
-	# Sanity check: DNS_SERVERS deve estar definido
-	if [[ -z "${DNS_SERVERS:-}" ]]; then
-		echo -e "${AMARELO}⚠️ DNS_SERVERS vazio; pulando configuração de DNS.${NC}"
-	else
-		if [[ -f "$NM_CONF" ]]; then
-			echo "✅ Configuração de DNS já aplicada. Pulando."
+		# Sanity check: DNS_SERVERS deve estar definido
+		if [[ -z "${DNS_SERVERS:-}" ]]; then
+			echo -e "${AMARELO}⚠️ DNS_SERVERS vazio; pulando configuração de DNS.${NC}"
 		else
-			echo "⚙️  Aplicando DNS via NetworkManager..."
+			if [[ -f "$NM_CONF" ]]; then
+				echo "✅ Configuração de DNS já aplicada. Pulando."
+			else
+				echo "⚙️  Aplicando DNS via NetworkManager..."
 
-			# 1. Cria a pasta se não existir
-			sudo_run mkdir -p /etc/NetworkManager/conf.d/
+				# 1. Cria a pasta se não existir
+				sudo_run mkdir -p /etc/NetworkManager/conf.d/
 
-			# 2. Cria arquivo de configuração global
-			sudo_run tee "$NM_CONF" >/dev/null <<EOF
+				# 2. Cria arquivo de configuração global
+				sudo_run tee "$NM_CONF" >/dev/null <<EOF
 [main]
 dns=default
 
 [global-dns-domain-*]
 servers=$DNS_SERVERS
 EOF
-			echo "   📄 Configuração do NetworkManager criada para $DNS_PROVIDER."
+				echo "   📄 Configuração do NetworkManager criada para $DNS_PROVIDER."
 
-			# 3. Atualiza resolv.conf localmente (sem travar por padrão)
-			RESOLV_CONF="/etc/resolv.conf"
-			sudo_run rm -f "$RESOLV_CONF" || true
+				# 3. Atualiza resolv.conf localmente (sem travar por padrão)
+				RESOLV_CONF="/etc/resolv.conf"
+				sudo_run rm -f "$RESOLV_CONF" || true
 
-			# Separa os servers em nameservers
-			IFS=',' read -ra SERVERS <<<"$DNS_SERVERS"
-			for server in "${SERVERS[@]}"; do
-				printf "nameserver %s\n" "$server" | sudo_run tee -a "$RESOLV_CONF" >/dev/null
-			done
+				# Separa os servers em nameservers
+				IFS=',' read -ra SERVERS <<<"$DNS_SERVERS"
+				for server in "${SERVERS[@]}"; do
+					printf "nameserver %s\n" "$server" | sudo_run tee -a "$RESOLV_CONF" >/dev/null
+				done
 
-			if [[ "$FORCE_RESOLV_LOCK" == true ]]; then
-				echo "   🔒 Travando resolv.conf (opção forçada)."
-				sudo_run chattr +i "$RESOLV_CONF"
-			else
-				echo "   ℹ️  resolv.conf atualizado. Use --force-resolv-lock para travar (não recomendado)."
+				if [[ "$FORCE_RESOLV_LOCK" == true ]]; then
+					echo "   🔒 Travando resolv.conf (opção forçada)."
+					sudo_run chattr +i "$RESOLV_CONF"
+				else
+					echo "   ℹ️  resolv.conf atualizado. Use --force-resolv-lock para travar (não recomendado)."
+				fi
+
+				# 4. Reinicia o NetworkManager para aplicar
+				echo "   🔄 Reiniciando serviço de rede..."
+				sudo_run systemctl restart NetworkManager
+
+				echo -e "${VERDE}✅ DNS configurado!${NC}"
+				INSTALLED_PACKAGES+=("DNS: $DNS_PROVIDER")
 			fi
-
-			# 4. Reinicia o NetworkManager para aplicar
-			echo "   🔄 Reiniciando serviço de rede..."
-			sudo_run systemctl restart NetworkManager
-
-			echo -e "${VERDE}✅ DNS configurado!${NC}"
-			INSTALLED_PACKAGES+=("DNS: $DNS_PROVIDER")
 		fi
+	else
+		echo "⏭️ DNS: Mantendo configuração padrão do sistema."
 	fi
-else
-	echo "⏭️ DNS: Mantendo configuração padrão do sistema."
-fi
 }
 
 setup_dns

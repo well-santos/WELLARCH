@@ -15,6 +15,16 @@ AZUL='\033[0;36m'
 ROXO='\033[0;35m'
 NC='\033[0m'
 
+# Desativa cores em ambientes não interativos
+if [ ! -t 1 ]; then
+    VERDE=''
+    VERMELHO=''
+    AMARELO=''
+    AZUL=''
+    ROXO=''
+    NC=''
+fi
+
 # ==============================================================================
 # FUNÇÕES
 # ==============================================================================
@@ -46,7 +56,7 @@ if [ "$EUID" -eq 0 ]; then
 fi
 
 # Pede confirmação
-read -p "Tem certeza que deseja remover as alterações do WELLARCH? (y/n): " confirm
+read -rp "Tem certeza que deseja remover as alterações do WELLARCH? (y/n): " confirm
 if [[ ! "$confirm" =~ ^[yY]$ ]]; then
     echo -e "${VERDE}Operação cancelada.${NC}"
     exit 0
@@ -81,9 +91,9 @@ if grep -q "chaotic-aur" /etc/pacman.conf; then
     sudo sed -i '/\[chaotic-aur\]/,/^$/d' /etc/pacman.conf
     sudo sed -i '/chaotic-mirrorlist/d' /etc/pacman.conf
     
-    # Remover chaves
+    # Remover chaves e pacotes do Chaotic
     sudo pacman-key --delete 3056513887B78AEB 2>/dev/null || true
-    sudo pacman -S --noconfirm chaotic-keyring- 2>/dev/null || true
+    sudo pacman -Rns chaotic-keyring chaotic-mirrorlist 2>/dev/null || true
     
     sudo pacman -Sy --noconfirm
     echo -e "   ${VERDE}✓ Chaotic AUR removido${NC}"
@@ -96,7 +106,7 @@ echo ""
 echo -e "${AZUL}3. Restaurando pacman.conf...${NC}"
 if [ -f "/etc/pacman.conf.bak" ]; then
     echo "   Backup encontrado. Deseja restaurar de /etc/pacman.conf.bak? (y/n)"
-    read -p "Escolha: " restore_conf
+    read -rp "Escolha: " restore_conf
     if [[ "$restore_conf" =~ ^[yY]$ ]]; then
         sudo mv /etc/pacman.conf.bak /etc/pacman.conf
         echo -e "   ${VERDE}✓ pacman.conf restaurado${NC}"
