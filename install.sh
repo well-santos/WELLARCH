@@ -148,7 +148,7 @@ show_banner() {
     cat << "EOF"
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
-║            WELLARCH Installer v14.0                          ║
+║            WELLARCH Installer v15.0                          ║
 ║   Automação e Otimização para Arch Linux                     ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝

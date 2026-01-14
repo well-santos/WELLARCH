@@ -38,7 +38,7 @@ fi
 VERSION="15.0.0"
 
 # Contadores de progresso
-TOTAL_STEPS=9
+TOTAL_STEPS=10
 CURRENT_STEP=0
 
 # Função para mostrar progresso
@@ -116,9 +116,11 @@ start_sudo_keepalive() {
 run_cmd() {
 	if [ "${DRY_RUN:-false}" = true ]; then
 		echo -e "${AMARELO}(dry-run) CMD:${NC} $*"
+		log_to_file "(dry-run) $*"
 		return 0
 	fi
-	if ! "$@"; then
+	log_to_file "CMD: $*"
+	if ! "$@" 2>&1 | tee -a "$LOGFILE"; then
 		parar_com_erro "Comando falhou: $*"
 	fi
 }
@@ -156,6 +158,20 @@ check_disk_space() {
 				exit 0
 			fi
 		fi
+	fi
+}
+
+# Garante toolchain básica antes de compilar pacotes do AUR
+ensure_base_devel() {
+	if ! pacman -Qg base-devel >/dev/null 2>&1; then
+		echo "🔧 Instalando base-devel (dependências de compilação)..."
+		sudo_run pacman -S --needed base-devel --noconfirm
+		log_to_file "base-devel instalado"
+	else
+		log_to_file "base-devel já presente"
+	fi
+	if ! is_installed git; then
+		sudo_run pacman -S --needed git --noconfirm
 	fi
 }
 
@@ -520,6 +536,9 @@ check_internet
 echo "💾 Verificando espaço em disco..."
 check_disk_space
 
+# Toolchain para builds do AUR
+ensure_base_devel
+
 # Mantém sudo vivo (background) e guarda PID para cleanup
 start_sudo_keepalive
 
@@ -780,21 +799,38 @@ else
 	else
 		echo "Script LinuxToys salvo em: $lt_script"
 		LT_OK=false
+		if [[ -n "${LINUXTOYS_SHA256:-}" ]]; then
+			if echo "${LINUXTOYS_SHA256}  $lt_script" | sha256sum -c --status 2>/dev/null; then
+				echo "   ✅ Checksum do LinuxToys verificado."
+			else
+				echo -e "${VERMELHO}❌ Checksum do LinuxToys não confere. Abortando execução.${NC}"
+				FAILED_ITEMS+=("LinuxToys (checksum)")
+				LT_OK=false
+			fi
+		else
+			echo -e "${AMARELO}⚠️ Sem LINUXTOYS_SHA256 definido; executando sem verificação de integridade.${NC}"
+		fi
+
 		if [[ "${DRY_RUN:-false}" == true ]]; then
 			echo -e "${AMARELO}(dry-run) não executando instalador do LinuxToys${NC}"
 		else
-			if [[ "$ASSUME_YES" == true ]]; then
-				if bash "$lt_script"; then
-					LT_OK=true
-				fi
+			if [[ "$LT_OK" == false && -n "${LINUXTOYS_SHA256:-}" ]]; then
+				# checksum falhou; já registrado
+				:
 			else
-				read -r -p "Executar o instalador do LinuxToys agora? (y/n): " anslt
-				if [[ "$anslt" =~ ^[yY]$ ]]; then
+				if [[ "$ASSUME_YES" == true ]]; then
 					if bash "$lt_script"; then
 						LT_OK=true
 					fi
 				else
-					echo "Pulando execução do instalador LinuxToys (arquivo baixado)."
+					read -r -p "Executar o instalador do LinuxToys agora? (y/n): " anslt
+					if [[ "$anslt" =~ ^[yY]$ ]]; then
+						if bash "$lt_script"; then
+							LT_OK=true
+						fi
+					else
+						echo "Pulando execução do instalador LinuxToys (arquivo baixado)."
+					fi
 				fi
 			fi
 		fi
@@ -823,61 +859,97 @@ setup_dns() {
 		echo -e "${AMARELO}⏭️  Pulando configuração de DNS (--skip-dns)${NC}"
 		return 0
 	fi
-	
-	if [[ "$DNS_PROVIDER" != "none" ]]; then
-		echo "🌐 Configurando DNS..."
-		NM_CONF="/etc/NetworkManager/conf.d/99-dns-provider.conf"
 
-		# Sanity check: DNS_SERVERS deve estar definido
-		if [[ -z "${DNS_SERVERS:-}" ]]; then
-			echo -e "${AMARELO}⚠️ DNS_SERVERS vazio; pulando configuração de DNS.${NC}"
+	if [[ "$DNS_PROVIDER" == "none" ]]; then
+		echo "⏭️ DNS: Mantendo configuração padrão do sistema."
+		return 0
+	fi
+
+	if [[ -z "${DNS_SERVERS:-}" ]]; then
+		echo -e "${AMARELO}⚠️ DNS_SERVERS vazio; pulando configuração de DNS.${NC}"
+		return 0
+	fi
+
+	echo "🌐 Configurando DNS (IPv4 e IPv6)..."
+	NM_CONF="/etc/NetworkManager/conf.d/99-dns-provider.conf"
+	RESOLV_CONF="/etc/resolv.conf"
+	RESOLV_BACKUP="/etc/resolv.conf.wellarch.bak"
+
+	# Agrupa servidores por família
+	IFS=',' read -ra SERVERS <<<"$DNS_SERVERS"
+	IPV4_SERVERS=()
+	IPV6_SERVERS=()
+	for server in "${SERVERS[@]}"; do
+		if [[ "$server" == *:* ]]; then
+			IPV6_SERVERS+=("$server")
 		else
-			if [[ -f "$NM_CONF" ]]; then
-				echo "✅ Configuração de DNS já aplicada. Pulando."
-			else
-				echo "⚙️  Aplicando DNS via NetworkManager..."
+			IPV4_SERVERS+=("$server")
+		fi
+	done
 
-				# 1. Cria a pasta se não existir
-				sudo_run mkdir -p /etc/NetworkManager/conf.d/
-
-				# 2. Cria arquivo de configuração global
-				sudo_run tee "$NM_CONF" >/dev/null <<EOF
+	# Cria pasta de config do NM
+	sudo_run mkdir -p /etc/NetworkManager/conf.d/
+	sudo_run tee "$NM_CONF" >/dev/null <<EOF
 [main]
 dns=default
 
 [global-dns-domain-*]
 servers=$DNS_SERVERS
 EOF
-				echo "   📄 Configuração do NetworkManager criada para $DNS_PROVIDER."
+	echo "   📄 Configuração do NetworkManager criada para $DNS_PROVIDER."
 
-				# 3. Atualiza resolv.conf localmente (sem travar por padrão)
-				RESOLV_CONF="/etc/resolv.conf"
-				sudo_run rm -f "$RESOLV_CONF" || true
+	# Backup seguro do resolv.conf
+	if [[ ! -f "$RESOLV_BACKUP" && -f "$RESOLV_CONF" ]]; then
+		sudo_run cp "$RESOLV_CONF" "$RESOLV_BACKUP"
+		echo "   🗂️  Backup de resolv.conf salvo em $RESOLV_BACKUP"
+	fi
 
-				# Separa os servers em nameservers
-				IFS=',' read -ra SERVERS <<<"$DNS_SERVERS"
-				for server in "${SERVERS[@]}"; do
-					printf "nameserver %s\n" "$server" | sudo_run tee -a "$RESOLV_CONF" >/dev/null
-				done
+	# Se resolv.conf for symlink (ex.: systemd-resolved stub), substituir por arquivo real
+	if [[ -L "$RESOLV_CONF" ]]; then
+		echo "   ℹ️  resolv.conf é symlink; substituindo por arquivo gerenciado pelo WELLARCH."
+		sudo_run rm -f "$RESOLV_CONF"
+	fi
 
-				if [[ "$FORCE_RESOLV_LOCK" == true ]]; then
-					echo "   🔒 Travando resolv.conf (opção forçada)."
-					sudo_run chattr +i "$RESOLV_CONF"
-				else
-					echo "   ℹ️  resolv.conf atualizado. Use --force-resolv-lock para travar (não recomendado)."
+	sudo_run rm -f "$RESOLV_CONF" || true
+
+	for server in "${SERVERS[@]}"; do
+		printf "nameserver %s\n" "$server" | sudo_run tee -a "$RESOLV_CONF" >/dev/null
+	done
+
+	if [[ "$FORCE_RESOLV_LOCK" == true ]]; then
+		echo "   🔒 Travando resolv.conf (opção forçada)."
+		sudo_run chattr +i "$RESOLV_CONF"
+	else
+		echo "   ℹ️  resolv.conf atualizado. Use --force-resolv-lock para travar (não recomendado)."
+	fi
+
+	# Aplicar via nmcli para conexões ativas (garante IPv6)
+	if command -v nmcli >/dev/null 2>&1; then
+		ACTIVE_CONNS=($(nmcli -t -f NAME connection show --active))
+		if [[ ${#ACTIVE_CONNS[@]} -eq 0 ]]; then
+			echo "   ⚠️ Nenhuma conexão ativa encontrada para aplicar DNS via nmcli."
+		else
+			for CONN in "${ACTIVE_CONNS[@]}"; do
+				echo "   🔧 Aplicando DNS na conexão: $CONN"
+				nmcli connection modify "$CONN" ipv4.ignore-auto-dns yes ipv6.ignore-auto-dns yes 2>/dev/null || true
+				if [[ ${#IPV4_SERVERS[@]} -gt 0 ]]; then
+					nmcli connection modify "$CONN" ipv4.dns "${IPV4_SERVERS[*]}" 2>/dev/null || true
 				fi
-
-				# 4. Reinicia o NetworkManager para aplicar
-				echo "   🔄 Reiniciando serviço de rede..."
-				sudo_run systemctl restart NetworkManager
-
-				echo -e "${VERDE}✅ DNS configurado!${NC}"
-				INSTALLED_PACKAGES+=("DNS: $DNS_PROVIDER")
-			fi
+				if [[ ${#IPV6_SERVERS[@]} -gt 0 ]]; then
+					nmcli connection modify "$CONN" ipv6.dns "${IPV6_SERVERS[*]}" 2>/dev/null || true
+				fi
+				nmcli connection up "$CONN" >/dev/null 2>&1 || nmcli connection reload >/dev/null 2>&1 || true
+			done
 		fi
 	else
-		echo "⏭️ DNS: Mantendo configuração padrão do sistema."
+		echo "   ⚠️ nmcli não encontrado; apenas resolv.conf foi atualizado."
 	fi
+
+	echo "   🔄 Reiniciando NetworkManager..."
+	sudo_run systemctl restart NetworkManager
+
+	echo -e "${VERDE}✅ DNS configurado (IPv4/IPv6)!${NC}"
+	INSTALLED_PACKAGES+=("DNS: $DNS_PROVIDER")
 }
 
 setup_dns
