@@ -62,6 +62,10 @@ if [[ ! "$confirm" =~ ^[yY]$ ]]; then
     exit 0
 fi
 
+if ! sudo -v; then
+    parar_com_erro "Acesso sudo recusado. Você precisa de privilégios sudo."
+fi
+
 echo -e "${AMARELO}🗑️  Iniciando remoção...${NC}"
 echo ""
 
@@ -168,6 +172,14 @@ if [ -f "/etc/resolv.conf" ]; then
         sudo chattr -i /etc/resolv.conf
         echo -e "   ${VERDE}✓ Travamento removido${NC}"
     fi
+fi
+
+# Restaurar backup do resolv.conf, se existir
+if [ -f "/etc/resolv.conf.wellarch.bak" ]; then
+    echo "   Restaurando backup do resolv.conf..."
+    sudo mv /etc/resolv.conf.wellarch.bak /etc/resolv.conf
+    sudo systemctl restart NetworkManager
+    echo -e "   ${VERDE}✓ resolv.conf restaurado${NC}"
 fi
 echo ""
 

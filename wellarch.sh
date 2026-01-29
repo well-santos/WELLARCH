@@ -144,7 +144,10 @@ check_internet() {
 # Verifica espaço em disco
 check_disk_space() {
 	local available
-	available=$(df "$HOME" | tail -1 | awk '{print $4}')
+	available=$(df "$HOME" 2>/dev/null | tail -1 | awk '{print $4}') || available=0
+	if [[ -z "$available" ]]; then
+		available=0
+	fi
 	local required=$((3 * 1024 * 1024)) # 3GB em KB
 	if [[ "$available" -lt "$required" ]]; then
 		echo -e "${AMARELO}⚠️  AVISO: Apenas $(numfmt --to=iec-i --suffix=B $((available * 1024))) disponíveis.${NC}"
@@ -589,7 +592,7 @@ setup_reflector() {
 		echo "🔧 Instalando reflector para ordenação de mirrors..."
 		sudo_run pacman -S --needed reflector --noconfirm || {
 			echo -e "${AMARELO}⚠️ Não foi possível instalar reflector automaticamente.${NC}"
-			return 1
+			return 0
 		}
 	else
 		echo "✅ reflector já instalado."
@@ -600,7 +603,7 @@ setup_reflector() {
 		sudo_run cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.wellarch.bak || true
 		if ! sudo_run reflector --country Brazil --protocol https --latest 20 --sort rate --age 24 --save /etc/pacman.d/mirrorlist; then
 			echo -e "${AMARELO}⚠️ Falha ao executar reflector com país Brasil; mantendo mirrorlist atual.${NC}"
-			return 1
+			return 0
 		fi
 		sudo_run pacman -Syy --noconfirm || true
 	fi
@@ -651,7 +654,12 @@ install_aur_helper() {
 	fi
 	echo "📦 Instalando $AUR_HELPER..."
 
-	if sudo pacman -S "$AUR_HELPER" --noconfirm 2>/dev/null; then
+	if [[ "${DRY_RUN:-false}" == true ]]; then
+		echo -e "${AMARELO}(dry-run) pulando instalação do $AUR_HELPER${NC}"
+		return 0
+	fi
+
+	if sudo_run pacman -S "$AUR_HELPER" --noconfirm 2>/dev/null; then
 		echo -e "${VERDE}✅ $AUR_HELPER instalado via repositório!${NC}"
 		INSTALLED_PACKAGES+=("$AUR_HELPER")
 		return 0
@@ -766,6 +774,7 @@ else
 	if [[ "${DRY_RUN:-false}" == true ]]; then
 		echo "(dry-run) pulando instalação do $PAMAC_PKG"
 	else
+		ensure_base_devel
 		if ! $AUR_HELPER -S "$PAMAC_PKG" --noconfirm; then
 			parar_com_erro "Instalação do $PAMAC_PKG"
 		fi
@@ -999,15 +1008,25 @@ else
 fi
 
 echo "   🦄 Limpando cache do AUR Helper..."
-if ! $AUR_HELPER -c --noconfirm >/dev/null 2>&1; then
-	echo -e "   ${AMARELO}⚠️  Aviso ao limpar cache do $AUR_HELPER (-c).${NC}"
-fi
-if ! $AUR_HELPER -Sc --noconfirm >/dev/null 2>&1; then
-	echo -e "   ${AMARELO}⚠️  Aviso ao limpar cache do $AUR_HELPER (-Sc).${NC}"
+if [[ "$DRY_RUN" == true ]]; then
+	echo "   (dry-run) pulando limpeza do cache do $AUR_HELPER"
+elif is_installed "$AUR_HELPER"; then
+	if ! $AUR_HELPER -c --noconfirm >/dev/null 2>&1; then
+		echo -e "   ${AMARELO}⚠️  Aviso ao limpar cache do $AUR_HELPER (-c).${NC}"
+	fi
+	if ! $AUR_HELPER -Sc --noconfirm >/dev/null 2>&1; then
+		echo -e "   ${AMARELO}⚠️  Aviso ao limpar cache do $AUR_HELPER (-Sc).${NC}"
+	fi
+else
+	echo "   ℹ️  $AUR_HELPER não encontrado; pulando limpeza do cache."
 fi
 
 echo "   📱 Limpando Flatpaks..."
-flatpak uninstall --unused -y >/dev/null 2>&1
+if is_installed flatpak; then
+	flatpak uninstall --unused -y >/dev/null 2>&1 || true
+else
+	echo "   ℹ️  Flatpak não instalado; pulando limpeza."
+fi
 
 echo "   📜 Limpando logs..."
 sudo_run journalctl --vacuum-time=7d >/dev/null 2>&1

@@ -4,16 +4,16 @@ SHELL := /bin/bash
 
 lint:
 	@echo "Running shellcheck and shfmt checks..."
-	@shellcheck -x wellarch.sh
-	@shfmt -l wellarch.sh
+	@shellcheck -x wellarch.sh install.sh wellarch-remove.sh
+	@shfmt -l wellarch.sh install.sh wellarch-remove.sh
 
 format:
 	@echo "Formatting with shfmt..."
-	@shfmt -w wellarch.sh
+	@shfmt -w wellarch.sh install.sh wellarch-remove.sh
 
 check: lint
 	@echo "Running syntax check..."
-	@bash -n wellarch.sh
+	@bash -n wellarch.sh install.sh wellarch-remove.sh
 
 install-tools:
 	@echo "Installing shellcheck and shfmt (pacman/apt supported)..."

@@ -30,7 +30,7 @@ GITHUB_RAW_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH
 TEMP_DIR=$(mktemp -d)
 # Optional: URL to a public GPG key to import for verifying signatures
 # Example: export GPG_PUBKEY_URL="https://raw.githubusercontent.com/well-santos/WELLARCH/main/pubkey.asc"
-GPG_PUBKEY_URL=""
+GPG_PUBKEY_URL="${GPG_PUBKEY_URL:-}"
 
 # Cleanup on exit
 # shellcheck disable=SC2329 # Invoked via trap at runtime

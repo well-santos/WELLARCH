@@ -1,5 +1,7 @@
 # RESUMO DE IMPLEMENTAÇÃO - WELLARCH v14.0
 
+> Nota: documento histórico da v14.0. A versão atual do WELLARCH é v15.0.0.
+
 ## ✅ Tarefas Completadas
 
 ### 1. Instalação via Curl

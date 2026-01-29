@@ -1,5 +1,7 @@
 # Changelog - WELLARCH v14.0
 
+> Nota: changelog histórico da v14.0. A versão atual do WELLARCH é v15.0.0.
+
 ## 🚀 Novas Funcionalidades
 
 ### Instalação via Curl

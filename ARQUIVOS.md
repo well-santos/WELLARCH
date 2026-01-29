@@ -1,5 +1,7 @@
 # Estrutura de Arquivos - WELLARCH v14.0
 
+> Nota: documento histórico da v14.0. A versão atual do WELLARCH é v15.0.0.
+
 ## 📁 Arquivos Principais
 
 ### 🚀 Scripts Executáveis

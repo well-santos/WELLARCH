@@ -1,5 +1,7 @@
 # Análise de Melhorias do wellarch.sh - v14.0
 
+> Nota: documento histórico da v14.0. A versão atual do WELLARCH é v15.0.0.
+
 ## Problemas Identificados e Soluções
 
 ### 1. **Comparações Booleanas Inconsistentes** 
