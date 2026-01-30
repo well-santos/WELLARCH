@@ -157,8 +157,8 @@ Escolha quais apps deseja instalar:
 - AdwSteamGtk
 - GNOME Extension Manager
 
-**5. Reinício do Script:**
-Escolha se o script deve reiniciar automaticamente após a execução.
+**5. Reinício do Sistema:**
+Escolha se o sistema deve reiniciar automaticamente após a execução.
 
 Você pode aceitar os padrões pressionando Enter, ou escolher suas preferências.
 

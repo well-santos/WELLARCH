@@ -295,8 +295,6 @@ ensure_base_devel() {
 # Salvar IFS original para restaurar depois
 ORIGINAL_IFS="$IFS"
 
-# Preserva argumentos originais para possível reinício
-ORIGINAL_ARGS=("$@")
 
 # Inicializa arrays para rastrear instalações
 INSTALLED_PACKAGES=()
@@ -316,7 +314,7 @@ SKIP_EXTRAS=false
 SKIP_DNS=false
 SKIP_LINUXTOYS=false
 SKIP_CLEANUP=false
-RESTART_SCRIPT=false
+RESTART_SYSTEM=false
 while [ $# -gt 0 ]; do
 	case "${1-}" in
 	--dry-run)
@@ -587,17 +585,17 @@ else
 	echo -e "${VERDE}✓ ${#SELECTED_APPS[@]} aplicativo(s) selecionado(s)${NC}"
 fi
 
-# Opção para reiniciar o script após execução
+# Opção para reiniciar o sistema após execução
 echo ""
-restart_choice=$(prompt_choice "Reiniciar o script ao final? (y/n)" "n")
+restart_choice=$(prompt_choice "Reiniciar o sistema ao final? (y/n)" "n")
 case "${restart_choice,,}" in
 	y | yes)
-		RESTART_SCRIPT=true
-		echo -e "${VERDE}✓ Script será reiniciado ao final${NC}"
+		RESTART_SYSTEM=true
+		echo -e "${VERDE}✓ Sistema será reiniciado ao final${NC}"
 		;;
 	*)
-		RESTART_SCRIPT=false
-		echo -e "${VERDE}✓ Sem reinício do script${NC}"
+		RESTART_SYSTEM=false
+		echo -e "${VERDE}✓ Sem reinício do sistema${NC}"
 		;;
 esac
 
@@ -616,7 +614,7 @@ echo -e "${ROXO}║${NC}   AUR Helper:     ${VERDE}${AUR_HELPER}${NC}"
 echo -e "${ROXO}║${NC}   Pamac:          ${VERDE}${PAMAC_PKG}${NC}"
 echo -e "${ROXO}║${NC}   DNS:            ${VERDE}${DNS_PROVIDER}${NC}"
 echo -e "${ROXO}║${NC}   Flatpaks:       ${VERDE}${#SELECTED_APPS[@]} selecionado(s)${NC}"
-echo -e "${ROXO}║${NC}   Reiniciar:      ${VERDE}${RESTART_SCRIPT}${NC}"
+echo -e "${ROXO}║${NC}   Reiniciar:      ${VERDE}${RESTART_SYSTEM}${NC}"
 echo -e "${ROXO}║${NC}   Dry-run:        ${VERDE}${DRY_RUN}${NC}"
 echo -e "${ROXO}╚═════════════════════════════════════════════════════════╝${NC}"
 echo ""
@@ -1145,6 +1143,17 @@ configure_oh_my_zsh() {
 	else
 		echo -e "${AMARELO}⚠️ ~/.zshrc não encontrado; tema do Oh My Zsh não aplicado.${NC}"
 	fi
+
+	if is_installed zsh; then
+		if [[ "$SHELL" != */zsh ]]; then
+			if command -v chsh >/dev/null 2>&1; then
+				chsh -s "$(command -v zsh)" "$USER" >/dev/null 2>&1 || true
+				echo -e "${VERDE}✅ Zsh definido como shell padrão (faça logout/login).${NC}"
+			else
+				echo -e "${AMARELO}⚠️ chsh não disponível; zsh não definido como padrão.${NC}"
+			fi
+		fi
+	fi
 }
 
 configure_themes
@@ -1285,12 +1294,12 @@ if is_installed notify-send; then
 	notify-send -i dialog-information "WELLARCH v${VERSION}" "Setup completo em ${ELAPSED_MIN}m ${ELAPSED_SEC}s! ✨" 2>/dev/null || true
 fi
 
-# Reiniciar script se solicitado
-if [[ "$RESTART_SCRIPT" == true ]]; then
+# Reiniciar sistema se solicitado
+if [[ "$RESTART_SYSTEM" == true ]]; then
 	if [[ "${DRY_RUN:-false}" == true ]]; then
-		echo -e "${AMARELO}(dry-run) reinício do script solicitado; pulando.${NC}"
+		echo -e "${AMARELO}(dry-run) reinício do sistema solicitado; pulando.${NC}"
 	else
-		echo -e "${AMARELO}🔁 Reiniciando o script...${NC}"
-		exec "$0" "${ORIGINAL_ARGS[@]}"
+		echo -e "${AMARELO}🔁 Reiniciando o sistema...${NC}"
+		sudo_run systemctl reboot
 	fi
 fi
