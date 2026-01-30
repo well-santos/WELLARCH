@@ -18,6 +18,7 @@ O **WELLARCH** é um script de shell robusto projetado para transformar uma inst
 - **Downloads Mais Resilientes:** tentativas e timeouts configuráveis para pacman/flatpak/curl
 - **Resumo de Etapas Puladas:** relatório final mostra quais etapas foram ignoradas
 - **Backups/Restore Automático:** backups críticos e restauração em caso de erro fatal
+- **Plymouth + Boot Splash:** instalação do Plymouth, tema padrão e ajuste do systemd-boot para splash/quiet
 - **Cronômetro:** Mostra tempo total de execução ao final
 - **Notificação Desktop:** Alerta via notify-send quando a instalação termina
 - **Versionamento Semântico:** Adotado formato MAJOR.MINOR.PATCH
@@ -33,6 +34,7 @@ O **WELLARCH** é um script de shell robusto projetado para transformar uma inst
 - **Flatpak & Flathub:** Configuração completa do ambiente Flatpak e repositório Flathub.
 - **Apps e Temas Essenciais:** Instala cursor Fluent, Papirus, GDM Settings, GNOME Themes Extra e Visual Studio Code.
 - **Configuração Visual e Shell:** Aplica Papirus Dark, ícones legados Adwaita Dark e configura Oh My Zsh (tema duellj).
+- **Plymouth & Boot Splash:** Instala Plymouth, define tema e habilita animação de boot (systemd-boot com timeout 0 e opções quiet/splash).
 - **LinuxToys:** Integração com ferramentas essenciais (download seguro com confirmação).
 - **Atualização do Sistema:** Atualiza todos os pacotes com `pacman -Syu` antes de instalar novos.
 - **Limpeza do Sistema:**
