@@ -13,6 +13,11 @@ O **WELLARCH** é um script de shell robusto projetado para transformar uma inst
 - **Mais Opções de DNS:** Agora com suporte a Google (8.8.8.8) e AdGuard
 - **Atualização do Sistema:** Nova etapa para atualizar pacotes antes de instalar
 - **Resumo de Configuração:** Exibe um sumário das opções antes de executar
+- **Novas Flags de Controle:** `--log-level`, `--download-timeout`, `--download-retries`, `--non-interactive`, `--post-check`
+- **DNS Mais Seguro:** opção `--skip-resolv-conf` para evitar sobrescrever `/etc/resolv.conf` (útil com systemd-resolved)
+- **Downloads Mais Resilientes:** tentativas e timeouts configuráveis para pacman/flatpak/curl
+- **Resumo de Etapas Puladas:** relatório final mostra quais etapas foram ignoradas
+- **Backups/Restore Automático:** backups críticos e restauração em caso de erro fatal
 - **Cronômetro:** Mostra tempo total de execução ao final
 - **Notificação Desktop:** Alerta via notify-send quando a instalação termina
 - **Versionamento Semântico:** Adotado formato MAJOR.MINOR.PATCH
@@ -169,7 +174,8 @@ Antes de iniciar, o script valida:
 - ✅ Tem acesso a `sudo` (sem necessidade de ser root)
 - ✅ Conectividade com a internet (tenta ping em 8.8.8.8 e 1.1.1.1)
 - ✅ Espaço em disco disponível (avisa se menos de 3GB, permite continuar)
-- ✅ Cria backup automático de `/etc/pacman.conf`
+- ✅ Verifica dependências básicas (pacman, sudo, grep, awk, df, ping, numfmt, tee, etc.)
+- ✅ Cria backup automático de arquivos críticos (ex.: `/etc/pacman.conf`, mirrorlist, `resolv.conf` quando aplicável)
 
 **Requisitos de Sistema:**
 - Arch Linux atualizado (com pacman funcional)
@@ -182,7 +188,7 @@ Antes de iniciar, o script valida:
 O script também suporta argumentos para maior controle e segurança:
 
 ```bash
-./wellarch.sh [--dry-run] [--yes] [--force-resolv-lock] [--skip-*] [--help]
+./wellarch.sh [--dry-run] [--yes] [--log-level] [--download-timeout] [--download-retries] [--non-interactive] [--post-check] [--force-resolv-lock] [--skip-resolv-conf] [--skip-*] [--help]
 ```
 
 ### Flags Disponíveis
@@ -192,6 +198,12 @@ O script também suporta argumentos para maior controle e segurança:
 | `--dry-run` | Simula a execução sem fazer alterações destrutivas no sistema. Ideal para testes e validação. |
 | `--yes`, `-y` | Assume "sim" automaticamente para todos os prompts interativos (sem perguntar). |
 | `--force-resolv-lock` | **Ativa** o travamento de `/etc/resolv.conf` com `chattr +i`. ⚠️ Use com cuidado — pode dificultar alterações futuras. |
+| `--skip-resolv-conf` | Não sobrescreve `/etc/resolv.conf` (recomendado quando `systemd-resolved` está ativo). |
+| `--log-level` | Define nível de log: `debug`, `info`, `warn`, `error`. |
+| `--download-timeout` | Timeout de downloads em segundos (0 desativa). |
+| `--download-retries` | Número de tentativas para downloads. |
+| `--non-interactive` | Evita prompts (use em conjunto com `--yes`). |
+| `--post-check` | Executa verificação pós-instalação. |
 | `--skip-update` | Pula a etapa de atualização do sistema (pacman -Syu). |
 | `--skip-mirrors` | Pula a otimização de mirrors com reflector. |
 | `--skip-chaotic` | Pula a instalação do repositório Chaotic AUR. |
@@ -251,6 +263,7 @@ curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh
 Ao final da execução, o script mostra um **relatório detalhado** com:
 - ⏱️ **Tempo total** de execução
 - Configurações selecionadas (AUR Helper, Pamac, DNS)
+- Etapas puladas (se houver)
 - Lista de pacotes instalados
 - Lista de aplicativos Flatpak instalados
 - Itens que falharam (se houver)
@@ -267,8 +280,9 @@ O script foi desenvolvido com as seguintes práticas:
 - **Limpeza automática** de diretórios temporários mesmo em caso de erro ou interrupção
 - **Logging completo** registrado em `~/.cache/wellarch/wellarch.log`
 - **Download seguro** de ferramentas em diretório temporário com confirmação antes de execução
+- **Retries e timeouts** configuráveis para downloads críticos
 - **Instalação segura** compilando diretamente da fonte para AUR helpers
-- **Backup automático** de `/etc/pacman.conf` antes de modificações
+- **Backup automático** de arquivos críticos e **restauração em erro fatal**
 - **Validação de internet** antes de fazer downloads
 - **Verificação de espaço em disco** antes de instalar pacotes pesados
 - **Confirmações interativas** para operações destrutivas
