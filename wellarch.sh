@@ -1154,6 +1154,16 @@ configure_oh_my_zsh() {
 			fi
 		fi
 	fi
+
+	if command -v gsettings >/dev/null 2>&1; then
+		profile_id=$(gsettings get org.gnome.Terminal.ProfilesList default 2>/dev/null | tr -d "'")
+		if [[ -n "$profile_id" ]]; then
+			gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${profile_id}/" use-custom-command false >/dev/null 2>&1 || true
+			gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${profile_id}/" custom-command "" >/dev/null 2>&1 || true
+			gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${profile_id}/" login-shell true >/dev/null 2>&1 || true
+			echo -e "${VERDE}✅ GNOME Terminal configurado para usar o shell padrão (login).${NC}"
+		fi
+	fi
 }
 
 configure_themes
