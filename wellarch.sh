@@ -37,6 +37,16 @@ fi
 # Versão do script (Semantic Versioning)
 VERSION="15.0.0"
 
+# Configurações gerais
+LOG_LEVEL="info"
+LOG_LEVEL_NUM=2
+DOWNLOAD_TIMEOUT="${DOWNLOAD_TIMEOUT:-300}"
+DOWNLOAD_RETRIES="${DOWNLOAD_RETRIES:-3}"
+DOWNLOAD_BACKOFF="${DOWNLOAD_BACKOFF:-3}"
+NON_INTERACTIVE=false
+SKIP_RESOLV_CONF=false
+POST_CHECK=false
+
 # Contadores de progresso
 TOTAL_STEPS=12
 CURRENT_STEP=0
@@ -54,10 +64,30 @@ show_progress() {
 
 # Logging helpers
 VERBOSE=false
-log_debug() { [[ "$VERBOSE" == true ]] && echo -e "${AZUL}[DEBUG]${NC} $*"; }
-log_info() { echo -e "${AZUL}$*${NC}"; }
-log_warn() { echo -e "${AMARELO}$*${NC}"; }
-log_error() { echo -e "${VERMELHO}$*${NC}"; }
+set_log_level() {
+	case "${1,,}" in
+	debug)
+		LOG_LEVEL_NUM=3
+		;;
+	info)
+		LOG_LEVEL_NUM=2
+		;;
+	warn | warning)
+		LOG_LEVEL_NUM=1
+		;;
+	error)
+		LOG_LEVEL_NUM=0
+		;;
+	*)
+		echo -e "${VERMELHO}❌ LOG_LEVEL inválido: $1 (use debug|info|warn|error)${NC}"
+		exit 1
+		;;
+	esac
+}
+log_debug() { [[ "$VERBOSE" == true && "$LOG_LEVEL_NUM" -ge 3 ]] && echo -e "${AZUL}[DEBUG]${NC} $*"; }
+log_info() { [[ "$LOG_LEVEL_NUM" -ge 2 ]] && echo -e "${AZUL}$*${NC}"; }
+log_warn() { [[ "$LOG_LEVEL_NUM" -ge 1 ]] && echo -e "${AMARELO}$*${NC}"; }
+log_error() { [[ "$LOG_LEVEL_NUM" -ge 0 ]] && echo -e "${VERMELHO}$*${NC}"; }
 
 # ==============================================================================
 # FUNÇÕES AUXILIARES
@@ -86,6 +116,46 @@ is_chaotic_pkg() {
 	pacman -Si "chaotic-aur/$1" >/dev/null 2>&1
 }
 
+SKIPPED_STEPS=()
+BACKUP_FILES=()
+
+add_skipped_step() {
+	local step="$1"
+	SKIPPED_STEPS+=("$step")
+}
+
+backup_file() {
+	local src="$1"
+	local bak="$2"
+	if [[ -f "$src" && ! -f "$bak" ]]; then
+		if [ "$EUID" -eq 0 ]; then
+			try_cmd cp "$src" "$bak" || true
+		else
+			try_cmd sudo cp "$src" "$bak" || true
+		fi
+		BACKUP_FILES+=("$src|$bak")
+	fi
+}
+
+restore_backups() {
+	if [[ ${#BACKUP_FILES[@]} -eq 0 ]]; then
+		return 0
+	fi
+	log_warn "Restaurando backups críticos..."
+	local pair src bak
+	for pair in "${BACKUP_FILES[@]}"; do
+		src="${pair%%|*}"
+		bak="${pair##*|}"
+		if [[ -f "$bak" ]]; then
+			if [ "$EUID" -eq 0 ]; then
+				try_cmd cp "$bak" "$src" || true
+			else
+				try_cmd sudo cp "$bak" "$src" || true
+			fi
+		fi
+	done
+}
+
 install_pkg_preferred() {
 	local display_name="$1"
 	shift
@@ -108,7 +178,7 @@ install_pkg_preferred() {
 	for pkg in "${candidates[@]}"; do
 		repo=$(get_official_repo "$pkg" || true)
 		if [[ -n "$repo" ]]; then
-			if sudo_run pacman -S --needed "${repo}/$pkg" --noconfirm; then
+			if sudo_run_retry "Instalação de $display_name" pacman -S --needed "${repo}/$pkg" --noconfirm; then
 				echo -e "${VERDE}✅ $display_name instalado (${pkg})!${NC}"
 				INSTALLED_PACKAGES+=("$display_name")
 				return 0
@@ -118,7 +188,7 @@ install_pkg_preferred() {
 
 	for pkg in "${candidates[@]}"; do
 		if is_chaotic_pkg "$pkg"; then
-			if sudo_run pacman -S --needed "chaotic-aur/$pkg" --noconfirm; then
+			if sudo_run_retry "Instalação de $display_name (Chaotic AUR)" pacman -S --needed "chaotic-aur/$pkg" --noconfirm; then
 				echo -e "${VERDE}✅ $display_name instalado (${pkg}) via Chaotic AUR!${NC}"
 				INSTALLED_PACKAGES+=("$display_name")
 				return 0
@@ -151,6 +221,7 @@ on_err() {
 parar_com_erro() {
 	echo -e "${VERMELHO}❌ ERRO CRÍTICO: Falha na etapa: $1 ${NC}"
 	echo -e "${VERMELHO}Script interrompido.${NC}"
+	restore_backups
 	exit 1
 }
 
@@ -188,14 +259,48 @@ start_sudo_keepalive() {
 }
 
 # Helper to run commands and fail with message
-run_cmd() {
+try_cmd() {
 	if [[ "${DRY_RUN:-false}" == true ]]; then
 		echo -e "${AMARELO}(dry-run) CMD:${NC} $*"
 		log_to_file "(dry-run) $*"
 		return 0
 	fi
 	log_to_file "CMD: $*"
-	if ! "$@" 2>&1 | tee -a "$LOGFILE"; then
+	"$@" 2>&1 | tee -a "$LOGFILE"
+	return "${PIPESTATUS[0]}"
+}
+
+run_with_retry() {
+	local label="$1"
+	shift
+	local attempt=1
+	local max="$DOWNLOAD_RETRIES"
+	local backoff="$DOWNLOAD_BACKOFF"
+	if [[ -z "$max" || "$max" -lt 1 ]]; then
+		max=1
+	fi
+	while true; do
+		if [[ "$DOWNLOAD_TIMEOUT" -gt 0 ]] && command -v timeout >/dev/null 2>&1; then
+			if try_cmd timeout "${DOWNLOAD_TIMEOUT}" "$@"; then
+				return 0
+			fi
+		else
+			if try_cmd "$@"; then
+				return 0
+			fi
+		fi
+		if (( attempt >= max )); then
+			return 1
+		fi
+		log_warn "Tentativa ${attempt}/${max} falhou. Aguardando ${backoff}s para nova tentativa..."
+		sleep "$backoff"
+		attempt=$((attempt + 1))
+		backoff=$((backoff * 2))
+	done
+}
+
+run_cmd() {
+	if ! try_cmd "$@"; then
 		parar_com_erro "Comando falhou: $*"
 	fi
 }
@@ -206,6 +311,16 @@ sudo_run() {
 		run_cmd "$@"
 	else
 		run_cmd sudo "$@"
+	fi
+}
+
+sudo_run_retry() {
+	local label="$1"
+	shift
+	if [ "$EUID" -eq 0 ]; then
+		run_with_retry "$label" "$@"
+	else
+		run_with_retry "$label" sudo "$@"
 	fi
 }
 
@@ -239,12 +354,44 @@ check_disk_space() {
 	fi
 }
 
+check_dependencies() {
+	local required_cmds=(
+		pacman
+		sudo
+		grep
+		awk
+		df
+		ping
+		numfmt
+		tee
+		mkdir
+		rm
+		cp
+		sed
+		mktemp
+	)
+	local missing=()
+	local cmd
+	for cmd in "${required_cmds[@]}"; do
+		if ! is_installed "$cmd"; then
+			missing+=("$cmd")
+		fi
+	done
+	if [[ ${#missing[@]} -gt 0 ]]; then
+		echo -e "${VERMELHO}❌ Dependências ausentes: ${missing[*]}.${NC}"
+		echo -e "${VERMELHO}Instale os pacotes necessários antes de continuar.${NC}"
+		exit 1
+	fi
+}
+
 validate_environment() {
 	# 1. Checagem de Root
 	if [ "$EUID" -eq 0 ]; then
 		echo -e "${VERMELHO}⚠️  Não rode como root. Use ./script.sh (o script pedirá a senha).${NC}"
 		exit 1
 	fi
+
+	check_dependencies
 
 	# Verifica se é Arch Linux
 	if ! grep -qi "arch" /etc/os-release; then
@@ -282,13 +429,13 @@ prompt_choice() {
 ensure_base_devel() {
 	if ! pacman -Qg base-devel >/dev/null 2>&1; then
 		echo "🔧 Instalando base-devel (dependências de compilação)..."
-		sudo_run pacman -S --needed base-devel --noconfirm
+		sudo_run_retry "Instalação de base-devel" pacman -S --needed base-devel --noconfirm
 		log_to_file "base-devel instalado"
 	else
 		log_to_file "base-devel já presente"
 	fi
 	if ! is_installed git; then
-		sudo_run pacman -S --needed git --noconfirm
+		sudo_run_retry "Instalação de git" pacman -S --needed git --noconfirm
 	fi
 }
 
@@ -329,12 +476,45 @@ while [ $# -gt 0 ]; do
 		VERBOSE=true
 		shift
 		;;
+	--log-level)
+		if [[ -z "${2-}" ]]; then
+			echo -e "${VERMELHO}❌ --log-level requer um valor (debug|info|warn|error).${NC}"
+			exit 1
+		fi
+		LOG_LEVEL="$2"
+		set_log_level "$LOG_LEVEL"
+		shift 2
+		;;
+	--download-timeout)
+		if [[ -z "${2-}" || ! "${2-}" =~ ^[0-9]+$ ]]; then
+			echo -e "${VERMELHO}❌ --download-timeout requer um número (segundos).${NC}"
+			exit 1
+		fi
+		DOWNLOAD_TIMEOUT="$2"
+		shift 2
+		;;
+	--download-retries)
+		if [[ -z "${2-}" || ! "${2-}" =~ ^[0-9]+$ ]]; then
+			echo -e "${VERMELHO}❌ --download-retries requer um número.${NC}"
+			exit 1
+		fi
+		DOWNLOAD_RETRIES="$2"
+		shift 2
+		;;
+	--non-interactive)
+		NON_INTERACTIVE=true
+		shift
+		;;
 	--version)
 		echo -e "WELLARCH v${VERSION}"
 		exit 0
 		;;
 	--force-resolv-lock)
 		FORCE_RESOLV_LOCK=true
+		shift
+		;;
+	--skip-resolv-conf)
+		SKIP_RESOLV_CONF=true
 		shift
 		;;
 	--skip-update)
@@ -373,6 +553,10 @@ while [ $# -gt 0 ]; do
 		SKIP_CLEANUP=true
 		shift
 		;;
+	--post-check)
+		POST_CHECK=true
+		shift
+		;;
 	--help | -h)
 		cat <<EOF
 ${AZUL}WELLARCH v${VERSION} - Automação para Arch Linux${NC}
@@ -383,9 +567,15 @@ ${AMARELO}USO:${NC}
 ${AMARELO}OPÇÕES GERAIS:${NC}
   --dry-run              Simula execução sem fazer alterações
   --verbose              Ativa mensagens de debug
+	--log-level NIVEL       Define nível de log (debug|info|warn|error)
+	--download-timeout SEG  Timeout de downloads em segundos (0 desativa)
+	--download-retries N    Número de tentativas para downloads
+	--non-interactive       Evita prompts (use com --yes)
   --version              Exibe versão do script
   --yes, -y              Assume "sim" para todos os prompts
   --force-resolv-lock    Trava /etc/resolv.conf com chattr +i
+	--skip-resolv-conf      Não sobrescreve /etc/resolv.conf
+	--post-check            Executa verificação pós-instalação
   --help, -h             Exibe este menu de ajuda
 
 ${AMARELO}OPÇÕES DE SKIP (pular etapas):${NC}
@@ -394,7 +584,7 @@ ${AMARELO}OPÇÕES DE SKIP (pular etapas):${NC}
   --skip-chaotic         Pula configuração do Chaotic AUR
   --skip-flatpak         Pula instalação de Flatpak e apps
   --skip-pamac           Pula instalação do Pamac
-	--skip-extras          Pula apps e temas essenciais
+  --skip-extras          Pula apps e temas essenciais
   --skip-dns             Pula configuração de DNS
   --skip-linuxtoys       Pula instalação do LinuxToys
   --skip-cleanup         Pula limpeza do sistema
@@ -421,6 +611,12 @@ EOF
 	esac
 done
 
+set_log_level "$LOG_LEVEL"
+if [[ "$NON_INTERACTIVE" == true && "$ASSUME_YES" != true ]]; then
+	log_error "❌ --non-interactive requer --yes para evitar prompts."
+	exit 1
+fi
+
 # ==============================================================================
 # PREPARAÇÃO VISUAL
 # ==============================================================================
@@ -437,7 +633,7 @@ cat <<"EOF"
 ║    ╚══╝╚══╝ ╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝      ║ 
 ║                                                                           ║
 ║              Automação, Pós-Instalação e Otimização                       ║
-║                        para Arch Linux v15.0                            ║
+║                        para Arch Linux v15.0                              ║
 ║                                                                           ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
 EOF
@@ -655,6 +851,7 @@ update_system() {
 	
 	if [[ "$SKIP_UPDATE" == true ]]; then
 		echo -e "${AMARELO}⏭️  Pulando atualização do sistema (--skip-update)${NC}"
+		add_skipped_step "Atualização do Sistema"
 		return 0
 	fi
 	
@@ -664,7 +861,7 @@ update_system() {
 	fi
 	
 	echo "🔄 Atualizando sistema com pacman -Syu..."
-	if sudo_run pacman -Syu --noconfirm; then
+	if sudo_run_retry "Atualização do Sistema (pacman -Syu)" pacman -Syu --noconfirm; then
 		echo -e "${VERDE}✅ Sistema atualizado!${NC}"
 		INSTALLED_PACKAGES+=("System Update")
 	else
@@ -682,6 +879,7 @@ setup_reflector() {
 	
 	if [[ "$SKIP_MIRRORS" == true ]]; then
 		echo -e "${AMARELO}⏭️  Pulando otimização de mirrors (--skip-mirrors)${NC}"
+		add_skipped_step "Otimização de Mirrors"
 		return 0
 	fi
 	
@@ -692,7 +890,7 @@ setup_reflector() {
 
 	if ! is_installed reflector; then
 		echo "🔧 Instalando reflector para ordenação de mirrors..."
-		sudo_run pacman -S --needed reflector --noconfirm || {
+		sudo_run_retry "Instalação do reflector" pacman -S --needed reflector --noconfirm || {
 			echo -e "${AMARELO}⚠️ Não foi possível instalar reflector automaticamente.${NC}"
 			return 0
 		}
@@ -702,12 +900,12 @@ setup_reflector() {
 
 	if is_installed reflector; then
 		echo "🔄 Atualizando /etc/pacman.d/mirrorlist priorizando Brasil..."
-		sudo_run cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.wellarch.bak || true
+		backup_file /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.wellarch.bak
 		if ! sudo_run reflector --country Brazil --protocol https --latest 20 --sort rate --age 24 --save /etc/pacman.d/mirrorlist; then
 			echo -e "${AMARELO}⚠️ Falha ao executar reflector com país Brasil; mantendo mirrorlist atual.${NC}"
 			return 0
 		fi
-		sudo_run pacman -Syy --noconfirm || true
+		sudo_run_retry "Atualização de mirrors (pacman -Syy)" pacman -Syy --noconfirm || true
 	fi
 }
 
@@ -721,6 +919,7 @@ setup_chaotic_aur() {
 	
 	if [[ "$SKIP_CHAOTIC" == true ]]; then
 		echo -e "${AMARELO}⏭️  Pulando Chaotic AUR (--skip-chaotic)${NC}"
+		add_skipped_step "Configuração do Chaotic AUR"
 		return 0
 	fi
 	
@@ -729,15 +928,19 @@ setup_chaotic_aur() {
 		return 0
 	fi
 	echo "🌀 Configurando Chaotic AUR..."
-	sudo_run cp /etc/pacman.conf /etc/pacman.conf.bak
+	backup_file /etc/pacman.conf /etc/pacman.conf.bak
 	echo "   📝 Backup de /etc/pacman.conf criado em /etc/pacman.conf.bak"
 
 	sudo_run pacman-key --recv-key 3056513887B78AEB --keyserver keyserver.ubuntu.com
 	sudo_run pacman-key --lsign-key 3056513887B78AEB
-	sudo_run pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' \
-		'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst' --noconfirm
+	if ! sudo_run_retry "Configuração do Chaotic AUR (pacman -U)" pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' \
+		'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst' --noconfirm; then
+		parar_com_erro "Configuração do Chaotic AUR (pacman -U)"
+	fi
 	echo -e "\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist" | sudo_run tee -a /etc/pacman.conf >/dev/null
-	sudo_run pacman -Sy --noconfirm
+	if ! sudo_run_retry "Configuração do Chaotic AUR (pacman -Sy)" pacman -Sy --noconfirm; then
+		parar_com_erro "Configuração do Chaotic AUR (pacman -Sy)"
+	fi
 	echo -e "${VERDE}✅ Chaotic AUR configurado!${NC}"
 	INSTALLED_PACKAGES+=("Chaotic AUR")
 }
@@ -761,19 +964,23 @@ install_aur_helper() {
 		return 0
 	fi
 
-	if sudo_run pacman -S "$AUR_HELPER" --noconfirm 2>/dev/null; then
+	if sudo_run_retry "Instalação do $AUR_HELPER (pacman)" pacman -S "$AUR_HELPER" --noconfirm 2>/dev/null; then
 		echo -e "${VERDE}✅ $AUR_HELPER instalado via repositório!${NC}"
 		INSTALLED_PACKAGES+=("$AUR_HELPER")
 		return 0
 	fi
 
 	echo "📦 Instalando $AUR_HELPER-bin do AUR..."
-	sudo_run pacman -S --needed base-devel git --noconfirm
+	if ! sudo_run_retry "Instalação de base-devel/git" pacman -S --needed base-devel git --noconfirm; then
+		parar_com_erro "Instalação de base-devel/git"
+	fi
 	local tmpdir
 	tmpdir=$(mktemp -d)
 	TMP_DIRS+=("$tmpdir")
 
-	run_cmd git clone "https://aur.archlinux.org/${AUR_HELPER}-bin.git" "$tmpdir/$AUR_HELPER"
+	if ! run_with_retry "Clone do $AUR_HELPER-bin" git clone "https://aur.archlinux.org/${AUR_HELPER}-bin.git" "$tmpdir/$AUR_HELPER"; then
+		parar_com_erro "Clone do $AUR_HELPER-bin"
+	fi
 	pushd "$tmpdir/$AUR_HELPER" >/dev/null || return 1
 
 	if [[ "${DRY_RUN:-false}" == true ]]; then
@@ -804,12 +1011,17 @@ setup_flatpak() {
 	
 	if [[ "$SKIP_FLATPAK" == true ]]; then
 		echo -e "${AMARELO}⏭️  Pulando Flatpak (--skip-flatpak)${NC}"
+		add_skipped_step "Configuração do Flatpak"
 		return 0
 	fi
 	
 	if ! is_installed flatpak; then
 		echo "📦 Instalando Flatpak..."
-		sudo_run pacman -S flatpak --noconfirm
+		if ! sudo_run_retry "Instalação do Flatpak" pacman -S flatpak --noconfirm; then
+			echo -e "${AMARELO}⚠️ Falha ao instalar Flatpak.${NC}"
+			FAILED_ITEMS+=("Flatpak")
+			return 0
+		fi
 		INSTALLED_PACKAGES+=("Flatpak")
 	else
 		echo "✅ Flatpak já está instalado."
@@ -817,7 +1029,11 @@ setup_flatpak() {
 
 	if ! flatpak remote-list 2>/dev/null | grep -q "flathub"; then
 		echo "🌐 Adicionando Flathub..."
-		run_cmd flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+		if ! run_with_retry "Configuração do Flathub" flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo; then
+			echo -e "${AMARELO}⚠️ Falha ao adicionar Flathub.${NC}"
+			FAILED_ITEMS+=("Flathub")
+			return 0
+		fi
 		echo -e "${VERDE}✅ Flathub configurado!${NC}"
 	else
 		echo "✅ Repositório Flathub já ativo. Pulando."
@@ -833,22 +1049,23 @@ show_progress "Instalação de Apps Flatpak"
 
 if [[ "$SKIP_FLATPAK" == true ]]; then
 	echo -e "${AMARELO}⏭️  Pulando apps Flatpak (--skip-flatpak)${NC}"
+	add_skipped_step "Apps Flatpak"
 elif [[ ${#SELECTED_APPS[@]} -gt 0 ]]; then
 echo "📱 Instalando aplicativos Flatpak selecionados..."
 for APP in "${SELECTED_APPS[@]}"; do
-	if flatpak list --app | grep -q "$APP"; then
+	if flatpak list --app | grep -Fxq "$APP"; then
 		echo -e "   ℹ️  $APP já instalado. Pulando."
 	else
 		echo -e "   ⬇️  Instalando $APP..."
 		if [[ "$DRY_RUN" == true ]]; then
 			echo "   (dry-run) pulando instalação de $APP"
 		else
-			if flatpak install flathub "$APP" -y; then
+			if run_with_retry "Instalação do Flatpak $APP" flatpak install flathub "$APP" -y; then
 				INSTALLED_FLATPAKS+=("$APP")
 			else
 				echo -e "   ${AMARELO}⚠️  Erro. Reparando e tentando novamente...${NC}"
 				sudo_run flatpak repair || true
-				if flatpak install flathub "$APP" -y; then
+				if run_with_retry "Instalação do Flatpak $APP (retry)" flatpak install flathub "$APP" -y; then
 					INSTALLED_FLATPAKS+=("$APP")
 				else
 					echo -e "   ${VERMELHO}❌ Falha ao instalar $APP${NC}"
@@ -869,6 +1086,7 @@ show_progress "Instalação do Pamac"
 
 if [[ "$SKIP_PAMAC" == true ]]; then
 	echo -e "${AMARELO}⏭️  Pulando Pamac (--skip-pamac)${NC}"
+	add_skipped_step "Instalação do Pamac"
 elif is_installed pamac; then
 	echo "✅ Pamac já está instalado. Pulando."
 else
@@ -892,6 +1110,7 @@ show_progress "Apps e Temas Essenciais"
 
 if [[ "$SKIP_EXTRAS" == true ]]; then
 	echo -e "${AMARELO}⏭️  Pulando apps e temas essenciais (--skip-extras)${NC}"
+	add_skipped_step "Apps e Temas Essenciais"
 else
 	install_pkg_preferred "Cursor Fluent" "cursor-fluent" "fluent-cursor-theme"
 	install_pkg_preferred "GNOME Themes Extra" "gnome-themes-extra"
@@ -909,17 +1128,26 @@ MARKER_FILE="$HOME/.config/linuxtoys_installed.marker"
 
 if [[ "$SKIP_LINUXTOYS" == true ]]; then
 	echo -e "${AMARELO}⏭️  Pulando LinuxToys (--skip-linuxtoys)${NC}"
+	add_skipped_step "Instalação do LinuxToys"
 elif [ -f "$MARKER_FILE" ]; then
 	echo "✅ LinuxToys já foi executado. Pulando."
 else
 	echo "🧸 Instalando LinuxToys..."
 	DEPS=(bash git curl wget zenity python python-gobject python-requests gtk3 vte3)
-	sudo_run pacman -S --needed "${DEPS[@]}" --noconfirm
+	if ! sudo_run_retry "Instalação de dependências do LinuxToys" pacman -S --needed "${DEPS[@]}" --noconfirm; then
+		echo -e "${AMARELO}⚠️ Falha ao instalar dependências do LinuxToys.${NC}"
+		FAILED_ITEMS+=("LinuxToys (deps)")
+		return 0
+	fi
 
 	lt_tmp=$(mktemp -d)
 	TMP_DIRS+=("$lt_tmp")
 	lt_script="$lt_tmp/linuxtoys-install.sh"
-	if ! curl -fsSL -o "$lt_script" https://linux.toys/install.sh; then
+	CURL_OPTS=(-fsSL --connect-timeout 10)
+	if [[ "$DOWNLOAD_TIMEOUT" -gt 0 ]]; then
+		CURL_OPTS+=(--max-time "$DOWNLOAD_TIMEOUT")
+	fi
+	if ! run_with_retry "Download do LinuxToys" curl "${CURL_OPTS[@]}" -o "$lt_script" https://linux.toys/install.sh; then
 		echo -e "${VERMELHO}⚠️ Falha ao baixar LinuxToys.${NC}"
 		FAILED_ITEMS+=("LinuxToys")
 	else
@@ -983,11 +1211,13 @@ setup_dns() {
 	
 	if [[ "$SKIP_DNS" == true ]]; then
 		echo -e "${AMARELO}⏭️  Pulando configuração de DNS (--skip-dns)${NC}"
+		add_skipped_step "Configuração de DNS"
 		return 0
 	fi
 
 	if [[ "$DNS_PROVIDER" == "none" ]]; then
 		echo "⏭️ DNS: Mantendo configuração padrão do sistema."
+		add_skipped_step "Configuração de DNS (padrão do sistema)"
 		return 0
 	fi
 
@@ -1000,6 +1230,14 @@ setup_dns() {
 	NM_CONF="/etc/NetworkManager/conf.d/99-dns-provider.conf"
 	RESOLV_CONF="/etc/resolv.conf"
 	RESOLV_BACKUP="/etc/resolv.conf.wellarch.bak"
+	if command -v systemctl >/dev/null 2>&1; then
+		if systemctl is-active --quiet systemd-resolved; then
+			log_warn "systemd-resolved está ativo; /etc/resolv.conf pode ser gerenciado automaticamente."
+			if [[ "$SKIP_RESOLV_CONF" == true ]]; then
+				log_warn "Pulando alterações em /etc/resolv.conf (--skip-resolv-conf)."
+			fi
+		fi
+	fi
 
 	# Agrupa servidores por família
 	IFS=',' read -ra SERVERS <<<"$DNS_SERVERS"
@@ -1015,43 +1253,46 @@ setup_dns() {
 
 	# Cria pasta de config do NM
 	sudo_run mkdir -p /etc/NetworkManager/conf.d/
+	NM_SERVERS="${DNS_SERVERS//,/ }"
 	sudo_run tee "$NM_CONF" >/dev/null <<EOF
 [main]
 dns=default
 
 [global-dns-domain-*]
-servers=$DNS_SERVERS
+servers=$NM_SERVERS
 EOF
 	echo "   📄 Configuração do NetworkManager criada para $DNS_PROVIDER."
 
-	# Backup seguro do resolv.conf
-	if [[ ! -f "$RESOLV_BACKUP" && -f "$RESOLV_CONF" ]]; then
-		sudo_run cp "$RESOLV_CONF" "$RESOLV_BACKUP"
-		echo "   🗂️  Backup de resolv.conf salvo em $RESOLV_BACKUP"
-	fi
+	if [[ "$SKIP_RESOLV_CONF" != true ]]; then
+		# Backup seguro do resolv.conf
+		backup_file "$RESOLV_CONF" "$RESOLV_BACKUP"
+		if [[ -f "$RESOLV_BACKUP" ]]; then
+			echo "   🗂️  Backup de resolv.conf salvo em $RESOLV_BACKUP"
+		fi
 
-	# Se resolv.conf for symlink (ex.: systemd-resolved stub), substituir por arquivo real
-	if [[ -L "$RESOLV_CONF" ]]; then
-		echo "   ℹ️  resolv.conf é symlink; substituindo por arquivo gerenciado pelo WELLARCH."
-		sudo_run rm -f "$RESOLV_CONF"
-	fi
+		# Se resolv.conf for symlink (ex.: systemd-resolved stub), substituir por arquivo real
+		if [[ -L "$RESOLV_CONF" ]]; then
+			echo "   ℹ️  resolv.conf é symlink; substituindo por arquivo gerenciado pelo WELLARCH."
+			sudo_run rm -f "$RESOLV_CONF"
+		fi
 
-	sudo_run rm -f "$RESOLV_CONF" || true
+		sudo_run rm -f "$RESOLV_CONF" || true
 
-	for server in "${SERVERS[@]}"; do
-		printf "nameserver %s\n" "$server" | sudo_run tee -a "$RESOLV_CONF" >/dev/null
-	done
+		for server in "${SERVERS[@]}"; do
+			printf "nameserver %s\n" "$server" | sudo_run tee -a "$RESOLV_CONF" >/dev/null
+		done
 
-	if [[ "$FORCE_RESOLV_LOCK" == true ]]; then
-		echo "   🔒 Travando resolv.conf (opção forçada)."
-		sudo_run chattr +i "$RESOLV_CONF"
-	else
-		echo "   ℹ️  resolv.conf atualizado. Use --force-resolv-lock para travar (não recomendado)."
+		if [[ "$FORCE_RESOLV_LOCK" == true ]]; then
+			echo "   🔒 Travando resolv.conf (opção forçada)."
+			sudo_run chattr +i "$RESOLV_CONF"
+		else
+			echo "   ℹ️  resolv.conf atualizado. Use --force-resolv-lock para travar (não recomendado)."
+		fi
 	fi
 
 	# Aplicar via nmcli para conexões ativas (garante IPv6)
 	if command -v nmcli >/dev/null 2>&1; then
-		ACTIVE_CONNS=($(nmcli -t -f NAME connection show --active))
+		mapfile -t ACTIVE_CONNS < <(nmcli -t -f NAME connection show --active)
 		if [[ ${#ACTIVE_CONNS[@]} -eq 0 ]]; then
 			echo "   ⚠️ Nenhuma conexão ativa encontrada para aplicar DNS via nmcli."
 		else
@@ -1179,11 +1420,14 @@ show_progress "Limpeza do Sistema"
 
 if [[ "$SKIP_CLEANUP" == true ]]; then
 	echo -e "${AMARELO}⏭️  Pulando limpeza (--skip-cleanup)${NC}"
+	add_skipped_step "Limpeza do Sistema"
 else
 
 echo -e "${AZUL}🧹 Limpeza do Sistema...${NC}"
 
-sudo_run pacman -S --needed pacman-contrib --noconfirm &>/dev/null
+if ! sudo_run_retry "Instalação do pacman-contrib" pacman -S --needed pacman-contrib --noconfirm &>/dev/null; then
+	echo -e "${AMARELO}⚠️  Falha ao instalar pacman-contrib.${NC}"
+fi
 
 echo "   📦 Limpando cache do Pacman..."
 sudo_run paccache -rk 2 >/dev/null 2>&1
@@ -1239,6 +1483,40 @@ sudo_run journalctl --vacuum-time=7d >/dev/null 2>&1
 
 fi # Fim do bloco SKIP_CLEANUP
 
+# ---------------------------------------------------------
+# VERIFICAÇÃO PÓS-INSTALAÇÃO (OPCIONAL)
+# ---------------------------------------------------------
+post_install_check() {
+	echo -e "${AZUL}🔎 Verificação pós-instalação...${NC}"
+	local failed=()
+	local cmd
+	local base_checks=(pacman sudo)
+	for cmd in "${base_checks[@]}"; do
+		if ! is_installed "$cmd"; then
+			failed+=("$cmd")
+		fi
+	done
+	if [[ "$SKIP_FLATPAK" != true ]] && ! is_installed flatpak; then
+		failed+=("Flatpak")
+	fi
+	if [[ "$SKIP_PAMAC" != true ]] && ! is_installed pamac; then
+		failed+=("Pamac")
+	fi
+	if [[ "$SKIP_LINUXTOYS" != true && -n "${MARKER_FILE:-}" && ! -f "$MARKER_FILE" ]]; then
+		failed+=("LinuxToys (marker)")
+	fi
+	if [[ ${#failed[@]} -gt 0 ]]; then
+		echo -e "${AMARELO}⚠️  Pós-instalação: itens ausentes: ${failed[*]}${NC}"
+		FAILED_ITEMS+=("Post-check: ${failed[*]}")
+	else
+		echo -e "${VERDE}✅ Pós-instalação OK${NC}"
+	fi
+}
+
+if [[ "$POST_CHECK" == true ]]; then
+	post_install_check
+fi
+
 # ==============================================================================
 # RELATÓRIO FINAL
 # ==============================================================================
@@ -1263,6 +1541,14 @@ echo -e "   AUR Helper: ${VERDE}$AUR_HELPER${NC}"
 echo -e "   Pamac: ${VERDE}$PAMAC_PKG${NC}"
 echo -e "   DNS: ${VERDE}$DNS_PROVIDER${NC}"
 echo ""
+
+if [[ ${#SKIPPED_STEPS[@]} -gt 0 ]]; then
+	echo -e "${AMARELO}⏭️  ETAPAS PULADAS:${NC}"
+	for step in "${SKIPPED_STEPS[@]}"; do
+		echo -e "   ${AMARELO}•${NC} $step"
+	done
+	echo ""
+fi
 
 if [[ ${#INSTALLED_PACKAGES[@]} -gt 0 ]]; then
 	echo -e "${AMARELO}📦 PACOTES INSTALADOS: ${#INSTALLED_PACKAGES[@]}${NC}"
