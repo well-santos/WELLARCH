@@ -37,6 +37,10 @@ is_installed() {
     command -v "$1" &> /dev/null
 }
 
+is_pkg_installed() {
+    pacman -Qi "$1" >/dev/null 2>&1
+}
+
 # ==============================================================================
 # VERIFICAÇÕES INICIAIS
 # ==============================================================================
@@ -133,8 +137,33 @@ else
 fi
 echo ""
 
-# 5. Remover Flatpak
-echo -e "${AZUL}5. Removendo Flatpak e aplicativos...${NC}"
+# 5. Remover Apps e Temas Essenciais
+echo -e "${AZUL}5. Removendo apps e temas essenciais...${NC}"
+EXTRA_PKGS=(
+    "cursor-fluent"
+    "fluent-cursor-theme"
+    "gnome-themes-extra"
+    "code"
+    "visual-studio-code-bin"
+    "papirus-icon-theme"
+    "gdm-settings"
+)
+REMOVED_EXTRA=false
+for pkg in "${EXTRA_PKGS[@]}"; do
+    if is_pkg_installed "$pkg"; then
+        sudo pacman -Rns "$pkg" --noconfirm 2>/dev/null || true
+        REMOVED_EXTRA=true
+    fi
+done
+if [[ "$REMOVED_EXTRA" == true ]]; then
+    echo -e "   ${VERDE}✓ Apps e temas essenciais removidos${NC}"
+else
+    echo -e "   ℹ️  Nenhum app/tema essencial instalado"
+fi
+echo ""
+
+# 6. Remover Flatpak
+echo -e "${AZUL}6. Removendo Flatpak e aplicativos...${NC}"
 if is_installed flatpak; then
     echo "   Removendo Flatpak..."
     flatpak uninstall --all -y 2>/dev/null || true
@@ -145,8 +174,8 @@ else
 fi
 echo ""
 
-# 6. Remover marcador do LinuxToys
-echo -e "${AZUL}6. Limpando marcadores...${NC}"
+# 7. Remover marcador do LinuxToys
+echo -e "${AZUL}7. Limpando marcadores...${NC}"
 MARKER_FILE="$HOME/.config/linuxtoys_installed.marker"
 if [ -f "$MARKER_FILE" ]; then
     rm "$MARKER_FILE"
@@ -154,8 +183,8 @@ if [ -f "$MARKER_FILE" ]; then
 fi
 echo ""
 
-# 7. Remover configuração de DNS
-echo -e "${AZUL}7. Removendo configuração de DNS...${NC}"
+# 8. Remover configuração de DNS
+echo -e "${AZUL}8. Removendo configuração de DNS...${NC}"
 if [ -f "/etc/NetworkManager/conf.d/99-dns-provider.conf" ]; then
     echo "   Removendo configuração de DNS..."
     sudo rm /etc/NetworkManager/conf.d/99-dns-provider.conf
@@ -183,8 +212,8 @@ if [ -f "/etc/resolv.conf.wellarch.bak" ]; then
 fi
 echo ""
 
-# 8. Limpeza final
-echo -e "${AZUL}8. Limpeza final...${NC}"
+# 9. Limpeza final
+echo -e "${AZUL}9. Limpeza final...${NC}"
 echo "   Atualizando repositórios..."
 sudo pacman -Sy --noconfirm > /dev/null
 echo -e "   ${VERDE}✓ Repositórios atualizados${NC}"
@@ -201,6 +230,7 @@ echo -e "${AMARELO}📝 RESUMO:${NC}"
 echo "   • AUR Helper removido"
 echo "   • Chaotic AUR removido"
 echo "   • Pamac removido"
+echo "   • Apps/temas essenciais removidos"
 echo "   • Flatpak e aplicativos removidos"
 echo "   • Configurações de DNS removidas"
 echo ""

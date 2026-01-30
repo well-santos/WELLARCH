@@ -38,7 +38,7 @@ fi
 VERSION="15.0.0"
 
 # Contadores de progresso
-TOTAL_STEPS=10
+TOTAL_STEPS=12
 CURRENT_STEP=0
 
 # Função para mostrar progresso
@@ -54,7 +54,7 @@ show_progress() {
 
 # Logging helpers
 VERBOSE=false
-log_debug() { [ "$VERBOSE" = true ] && echo -e "${AZUL}[DEBUG]${NC} $*"; }
+log_debug() { [[ "$VERBOSE" == true ]] && echo -e "${AZUL}[DEBUG]${NC} $*"; }
 log_info() { echo -e "${AZUL}$*${NC}"; }
 log_warn() { echo -e "${AMARELO}$*${NC}"; }
 log_error() { echo -e "${VERMELHO}$*${NC}"; }
@@ -64,6 +64,81 @@ log_error() { echo -e "${VERMELHO}$*${NC}"; }
 # ==============================================================================
 is_installed() {
 	command -v "$1" &>/dev/null || return 1
+}
+
+is_pkg_installed() {
+	pacman -Qi "$1" >/dev/null 2>&1
+}
+
+get_official_repo() {
+	local pkg="$1"
+	local repo
+	for repo in core extra community multilib; do
+		if pacman -Si "${repo}/$pkg" >/dev/null 2>&1; then
+			echo "$repo"
+			return 0
+		fi
+	done
+	return 1
+}
+
+is_chaotic_pkg() {
+	pacman -Si "chaotic-aur/$1" >/dev/null 2>&1
+}
+
+install_pkg_preferred() {
+	local display_name="$1"
+	shift
+	local candidates=("$@")
+	local pkg
+	local repo
+
+	for pkg in "${candidates[@]}"; do
+		if is_pkg_installed "$pkg"; then
+			echo "✅ $display_name ($pkg) já está instalado. Pulando."
+			return 0
+		fi
+	done
+
+	if [[ "${DRY_RUN:-false}" == true ]]; then
+		echo -e "${AMARELO}(dry-run) instalaria $display_name${NC}"
+		return 0
+	fi
+
+	for pkg in "${candidates[@]}"; do
+		repo=$(get_official_repo "$pkg" || true)
+		if [[ -n "$repo" ]]; then
+			if sudo_run pacman -S --needed "${repo}/$pkg" --noconfirm; then
+				echo -e "${VERDE}✅ $display_name instalado (${pkg})!${NC}"
+				INSTALLED_PACKAGES+=("$display_name")
+				return 0
+			fi
+		fi
+	done
+
+	for pkg in "${candidates[@]}"; do
+		if is_chaotic_pkg "$pkg"; then
+			if sudo_run pacman -S --needed "chaotic-aur/$pkg" --noconfirm; then
+				echo -e "${VERDE}✅ $display_name instalado (${pkg}) via Chaotic AUR!${NC}"
+				INSTALLED_PACKAGES+=("$display_name")
+				return 0
+			fi
+		fi
+	done
+
+	if is_installed "$AUR_HELPER"; then
+		for pkg in "${candidates[@]}"; do
+			if $AUR_HELPER -S --needed "$pkg" --noconfirm; then
+				echo -e "${VERDE}✅ $display_name instalado (${pkg}) via AUR!${NC}"
+				INSTALLED_PACKAGES+=("$display_name")
+				return 0
+			fi
+		done
+	fi
+
+	echo -e "${VERMELHO}❌ Falha ao instalar $display_name.${NC}"
+	FAILED_ITEMS+=("$display_name")
+	return 1
 }
 
 on_err() {
@@ -114,7 +189,7 @@ start_sudo_keepalive() {
 
 # Helper to run commands and fail with message
 run_cmd() {
-	if [ "${DRY_RUN:-false}" = true ]; then
+	if [[ "${DRY_RUN:-false}" == true ]]; then
 		echo -e "${AMARELO}(dry-run) CMD:${NC} $*"
 		log_to_file "(dry-run) $*"
 		return 0
@@ -152,7 +227,7 @@ check_disk_space() {
 	if [[ "$available" -lt "$required" ]]; then
 		echo -e "${AMARELO}⚠️  AVISO: Apenas $(numfmt --to=iec-i --suffix=B $((available * 1024))) disponíveis.${NC}"
 		echo -e "${AMARELO}Recomendado: 3GB ou mais para Flatpaks e outras aplicações.${NC}"
-		if [ "$ASSUME_YES" = true ]; then
+		if [[ "$ASSUME_YES" == true ]]; then
 			log_warn "Continuando (ASSUME_YES ativo)."
 		else
 			read -r -p "Deseja continuar mesmo assim? (y/n): " cont_space
@@ -161,6 +236,45 @@ check_disk_space() {
 				exit 0
 			fi
 		fi
+	fi
+}
+
+validate_environment() {
+	# 1. Checagem de Root
+	if [ "$EUID" -eq 0 ]; then
+		echo -e "${VERMELHO}⚠️  Não rode como root. Use ./script.sh (o script pedirá a senha).${NC}"
+		exit 1
+	fi
+
+	# Verifica se é Arch Linux
+	if ! grep -qi "arch" /etc/os-release; then
+		echo -e "${VERMELHO}⚠️ Este script foi feito para Arch Linux. Saindo.${NC}"
+		exit 1
+	fi
+
+	log_info "🔑 Validando permissões sudo..."
+	if ! sudo -v; then
+		parar_com_erro "Acesso sudo recusado. Você precisa de privilégios sudo."
+	fi
+
+	# Verifica conectividade
+	echo "🌐 Verificando conectividade com internet..."
+	check_internet
+
+	# Verifica espaço em disco
+	echo "💾 Verificando espaço em disco..."
+	check_disk_space
+}
+
+prompt_choice() {
+	local prompt="$1"
+	local default="$2"
+	local choice
+	if [[ "$ASSUME_YES" == true ]]; then
+		echo "$default"
+	else
+		read -r -p "$prompt [$default]: " choice
+		echo "${choice:-$default}"
 	fi
 }
 
@@ -181,6 +295,9 @@ ensure_base_devel() {
 # Salvar IFS original para restaurar depois
 ORIGINAL_IFS="$IFS"
 
+# Preserva argumentos originais para possível reinício
+ORIGINAL_ARGS=("$@")
+
 # Inicializa arrays para rastrear instalações
 INSTALLED_PACKAGES=()
 INSTALLED_FLATPAKS=()
@@ -195,9 +312,11 @@ SKIP_MIRRORS=false
 SKIP_CHAOTIC=false
 SKIP_FLATPAK=false
 SKIP_PAMAC=false
+SKIP_EXTRAS=false
 SKIP_DNS=false
 SKIP_LINUXTOYS=false
 SKIP_CLEANUP=false
+RESTART_SCRIPT=false
 while [ $# -gt 0 ]; do
 	case "${1-}" in
 	--dry-run)
@@ -240,6 +359,10 @@ while [ $# -gt 0 ]; do
 		SKIP_PAMAC=true
 		shift
 		;;
+	--skip-extras)
+		SKIP_EXTRAS=true
+		shift
+		;;
 	--skip-dns)
 		SKIP_DNS=true
 		shift
@@ -273,6 +396,7 @@ ${AMARELO}OPÇÕES DE SKIP (pular etapas):${NC}
   --skip-chaotic         Pula configuração do Chaotic AUR
   --skip-flatpak         Pula instalação de Flatpak e apps
   --skip-pamac           Pula instalação do Pamac
+	--skip-extras          Pula apps e temas essenciais
   --skip-dns             Pula configuração de DNS
   --skip-linuxtoys       Pula instalação do LinuxToys
   --skip-cleanup         Pula limpeza do sistema
@@ -330,9 +454,11 @@ echo -e "   2. AUR Helper & Chaotic AUR"
 echo -e "   3. Flatpak & Flathub"
 echo -e "   4. Aplicativos Flatpak"
 echo -e "   5. Gerenciador Pamac"
-echo -e "   6. LinuxToys"
-echo -e "   7. Configuração de DNS"
-echo -e "   8. Limpeza do Sistema"
+echo -e "   6. Apps e Temas Essenciais"
+echo -e "   7. LinuxToys"
+echo -e "   8. Configuração de DNS"
+echo -e "   9. Configuração Visual e Shell"
+echo -e "   10. Limpeza do Sistema"
 echo -e "-------------------------------------------------------------"
 echo ""
 
@@ -359,12 +485,7 @@ echo ""
 echo -e "${AMARELO}1. Qual AUR Helper você deseja?${NC}"
 echo -e "   ${VERDE}a)${NC} Paru (padrão, mais rápido)"
 echo -e "   ${VERDE}b)${NC} Yay (alternativa)"
-if [[ "$ASSUME_YES" == true ]]; then
-	aur_choice='a'
-else
-	read -r -p "Escolha (a/b) [a]: " aur_choice
-	aur_choice="${aur_choice:-a}"
-fi
+aur_choice=$(prompt_choice "Escolha (a/b)" "a")
 case "${aur_choice,,}" in
 b | yay)
 	AUR_HELPER="yay"
@@ -381,12 +502,7 @@ echo ""
 echo -e "${AMARELO}2. Qual versão do Pamac você deseja?${NC}"
 echo -e "   ${VERDE}a)${NC} Pamac-all (com GUI + Flatpak + AUR, padrão)"
 echo -e "   ${VERDE}b)${NC} Pamac-aur (apenas CLI + AUR)"
-if [[ "$ASSUME_YES" == true ]]; then
-	pamac_choice='a'
-else
-	read -r -p "Escolha (a/b) [a]: " pamac_choice
-	pamac_choice="${pamac_choice:-a}"
-fi
+pamac_choice=$(prompt_choice "Escolha (a/b)" "a")
 case "${pamac_choice,,}" in
 b | aur)
 	PAMAC_PKG="pamac-aur"
@@ -406,12 +522,7 @@ echo -e "   ${VERDE}b)${NC} Quad9 (9.9.9.9) - Segurança"
 echo -e "   ${VERDE}c)${NC} Google (8.8.8.8) - Velocidade"
 echo -e "   ${VERDE}d)${NC} AdGuard (94.140.14.14) - Bloqueia anúncios"
 echo -e "   ${VERDE}e)${NC} Manter padrão do sistema (sem alterações)"
-if [[ "$ASSUME_YES" == true ]]; then
-	dns_choice='a'
-else
-	read -r -p "Escolha (a/b/c/d/e) [a]: " dns_choice
-	dns_choice="${dns_choice:-a}"
-fi
+dns_choice=$(prompt_choice "Escolha (a/b/c/d/e)" "a")
 case "${dns_choice,,}" in
 b | quad9)
 	DNS_PROVIDER="quad9"
@@ -451,6 +562,7 @@ AVAILABLE_APPS=(
 	"com.github.wwmm.easyeffects:Easy Effects"
 	"io.github.flattool.Ignition:Ignition"
 	"com.brave.Browser:Brave Browser"
+	"io.github.Foldex.AdwSteamGtk:AdwSteamGtk"
 	"com.mattjakeman.ExtensionManager:GNOME Extension Manager"
 )
 
@@ -475,6 +587,20 @@ else
 	echo -e "${VERDE}✓ ${#SELECTED_APPS[@]} aplicativo(s) selecionado(s)${NC}"
 fi
 
+# Opção para reiniciar o script após execução
+echo ""
+restart_choice=$(prompt_choice "Reiniciar o script ao final? (y/n)" "n")
+case "${restart_choice,,}" in
+	y | yes)
+		RESTART_SCRIPT=true
+		echo -e "${VERDE}✓ Script será reiniciado ao final${NC}"
+		;;
+	*)
+		RESTART_SCRIPT=false
+		echo -e "${VERDE}✓ Sem reinício do script${NC}"
+		;;
+esac
+
 echo ""
 echo -e "${AZUL}Configurações confirmadas!${NC}"
 echo "-------------------------------------------------------------"
@@ -490,6 +616,7 @@ echo -e "${ROXO}║${NC}   AUR Helper:     ${VERDE}${AUR_HELPER}${NC}"
 echo -e "${ROXO}║${NC}   Pamac:          ${VERDE}${PAMAC_PKG}${NC}"
 echo -e "${ROXO}║${NC}   DNS:            ${VERDE}${DNS_PROVIDER}${NC}"
 echo -e "${ROXO}║${NC}   Flatpaks:       ${VERDE}${#SELECTED_APPS[@]} selecionado(s)${NC}"
+echo -e "${ROXO}║${NC}   Reiniciar:      ${VERDE}${RESTART_SCRIPT}${NC}"
 echo -e "${ROXO}║${NC}   Dry-run:        ${VERDE}${DRY_RUN}${NC}"
 echo -e "${ROXO}╚═════════════════════════════════════════════════════════╝${NC}"
 echo ""
@@ -514,30 +641,7 @@ log_to_file "Configurações: AUR=${AUR_HELPER} PAMAC=${PAMAC_PKG} DNS=${DNS_PRO
 echo ""
 echo -e "${AMARELO}🚀 Iniciando WELLARCH v${VERSION}...${NC}"
 
-# 1. Checagem de Root
-if [ "$EUID" -eq 0 ]; then
-	echo -e "${VERMELHO}⚠️  Não rode como root. Use ./script.sh (o script pedirá a senha).${NC}"
-	exit 1
-fi
-
-# Verifica se é Arch Linux
-if ! grep -qi "arch" /etc/os-release; then
-	echo -e "${VERMELHO}⚠️ Este script foi feito para Arch Linux. Saindo.${NC}"
-	exit 1
-fi
-
-log_info "🔑 Validando permissões sudo..."
-if ! sudo -v; then
-	parar_com_erro "Acesso sudo recusado. Você precisa de privilégios sudo."
-fi
-
-# Verifica conectividade
-echo "🌐 Verificando conectividade com internet..."
-check_internet
-
-# Verifica espaço em disco
-echo "💾 Verificando espaço em disco..."
-check_disk_space
+validate_environment
 
 # Toolchain para builds do AUR
 ensure_base_devel
@@ -784,7 +888,22 @@ else
 fi
 
 # ---------------------------------------------------------
-# 8. LINUXTOYS
+# 8. APPS E TEMAS ESSENCIAIS
+# ---------------------------------------------------------
+show_progress "Apps e Temas Essenciais"
+
+if [[ "$SKIP_EXTRAS" == true ]]; then
+	echo -e "${AMARELO}⏭️  Pulando apps e temas essenciais (--skip-extras)${NC}"
+else
+	install_pkg_preferred "Cursor Fluent" "cursor-fluent" "fluent-cursor-theme"
+	install_pkg_preferred "GNOME Themes Extra" "gnome-themes-extra"
+	install_pkg_preferred "Visual Studio Code" "code" "visual-studio-code-bin"
+	install_pkg_preferred "Papirus Icon Theme" "papirus-icon-theme"
+	install_pkg_preferred "GDM Settings" "gdm-settings"
+fi
+
+# ---------------------------------------------------------
+# 9. LINUXTOYS
 # ---------------------------------------------------------
 show_progress "Instalação do LinuxToys"
 
@@ -859,7 +978,7 @@ else
 fi
 
 # ---------------------------------------------------------
-# 9. DNS (SOLUÇÃO DEFINITIVA NETWORK MANAGER)
+# 10. DNS (SOLUÇÃO DEFINITIVA NETWORK MANAGER)
 # ---------------------------------------------------------
 setup_dns() {
 	show_progress "Configuração de DNS"
@@ -963,11 +1082,79 @@ EOF
 
 setup_dns
 
+# ---------------------------------------------------------
+# 11. CONFIGURAÇÃO VISUAL E SHELL
+# ---------------------------------------------------------
+show_progress "Configuração Visual e Shell"
+
+configure_themes() {
+	if [[ "${DRY_RUN:-false}" == true ]]; then
+		echo -e "${AMARELO}(dry-run) aplicaria temas de ícones${NC}"
+		return 0
+	fi
+
+	if command -v gsettings >/dev/null 2>&1; then
+		if gsettings writable org.gnome.desktop.interface icon-theme >/dev/null 2>&1; then
+			gsettings set org.gnome.desktop.interface icon-theme "Papirus-Dark" || true
+			echo -e "${VERDE}✅ Ícones definidos para Papirus-Dark${NC}"
+		fi
+	else
+		echo -e "${AMARELO}⚠️ gsettings não encontrado; ícones Papirus-Dark não aplicados.${NC}"
+	fi
+
+	legacy_file="$HOME/.gtkrc-2.0"
+	if [[ -f "$legacy_file" ]]; then
+		if grep -q '^gtk-icon-theme-name=' "$legacy_file"; then
+			sed -i 's/^gtk-icon-theme-name=.*/gtk-icon-theme-name="Adwaita-dark"/' "$legacy_file"
+		else
+			echo 'gtk-icon-theme-name="Adwaita-dark"' >> "$legacy_file"
+		fi
+	else
+		{
+			echo "# Configuração gerada pelo WELLARCH"
+			echo 'gtk-icon-theme-name="Adwaita-dark"'
+		} > "$legacy_file"
+	fi
+}
+
+configure_oh_my_zsh() {
+	install_pkg_preferred "Zsh" "zsh"
+	install_pkg_preferred "Git" "git"
+	install_pkg_preferred "Curl" "curl"
+
+	if [[ "${DRY_RUN:-false}" == true ]]; then
+		echo -e "${AMARELO}(dry-run) instalaria Oh My Zsh e aplicaria tema duellj${NC}"
+		return 0
+	fi
+
+	if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
+		echo "🌀 Instalando Oh My Zsh..."
+		RUNZSH=no CHSH=no KEEP_ZSHRC=yes \
+			bash -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" || true
+	else
+		echo "✅ Oh My Zsh já instalado."
+	fi
+
+	if [[ -f "$HOME/.zshrc" ]]; then
+		if grep -q '^ZSH_THEME=' "$HOME/.zshrc"; then
+			sed -i 's/^ZSH_THEME=.*/ZSH_THEME="duellj"/' "$HOME/.zshrc"
+		else
+			echo 'ZSH_THEME="duellj"' >> "$HOME/.zshrc"
+		fi
+		echo -e "${VERDE}✅ Tema do Oh My Zsh definido para duellj${NC}"
+	else
+		echo -e "${AMARELO}⚠️ ~/.zshrc não encontrado; tema do Oh My Zsh não aplicado.${NC}"
+	fi
+}
+
+configure_themes
+configure_oh_my_zsh
+
 # Restaurar IFS original
 IFS="$ORIGINAL_IFS"
 
 # ---------------------------------------------------------
-# 10. LIMPEZA
+# 12. LIMPEZA
 # ---------------------------------------------------------
 show_progress "Limpeza do Sistema"
 
@@ -1096,4 +1283,14 @@ log_to_file "Pacotes instalados: ${#INSTALLED_PACKAGES[@]} | Flatpaks: ${#INSTAL
 # Notificação desktop (se disponível)
 if is_installed notify-send; then
 	notify-send -i dialog-information "WELLARCH v${VERSION}" "Setup completo em ${ELAPSED_MIN}m ${ELAPSED_SEC}s! ✨" 2>/dev/null || true
+fi
+
+# Reiniciar script se solicitado
+if [[ "$RESTART_SCRIPT" == true ]]; then
+	if [[ "${DRY_RUN:-false}" == true ]]; then
+		echo -e "${AMARELO}(dry-run) reinício do script solicitado; pulando.${NC}"
+	else
+		echo -e "${AMARELO}🔁 Reiniciando o script...${NC}"
+		exec "$0" "${ORIGINAL_ARGS[@]}"
+	fi
 fi

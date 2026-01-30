@@ -8,7 +8,7 @@ O **WELLARCH** é um script de shell robusto projetado para transformar uma inst
 
 ## ✨ Novidades da v15.0.0
 
-- **Skip Flags:** 8 novas flags para pular etapas específicas (veja abaixo)
+- **Skip Flags:** 10 novas flags para pular etapas específicas (veja abaixo)
 - **Indicadores de Progresso:** Exibe passo atual e total durante execução
 - **Mais Opções de DNS:** Agora com suporte a Google (8.8.8.8) e AdGuard
 - **Atualização do Sistema:** Nova etapa para atualizar pacotes antes de instalar
@@ -22,10 +22,12 @@ O **WELLARCH** é um script de shell robusto projetado para transformar uma inst
 ## Funcionalidades
 
 - **AUR Helper:** Escolha entre Paru ou Yay (Instalação via Chaotic-AUR ou fallback binário do AUR).
-- **Chaotic AUR:** Integração automática do repositório Chaotic AUR para instalações mais rápidas e helpers pré-compilados.
+- **Chaotic AUR:** Integração automática do repositório Chaotic AUR para instalações mais rápidas e helpers pré-compilados (quando disponível, tem prioridade sobre AUR).
 - **Pamac:** Escolha entre Pamac-all (GUI completa) ou Pamac-aur (CLI).
 - **Configuração de DNS:** Escolha entre Cloudflare, Quad9, Google ou AdGuard via NetworkManager.
 - **Flatpak & Flathub:** Configuração completa do ambiente Flatpak e repositório Flathub.
+- **Apps e Temas Essenciais:** Instala cursor Fluent, Papirus, GDM Settings, GNOME Themes Extra e Visual Studio Code.
+- **Configuração Visual e Shell:** Aplica Papirus Dark, ícones legados Adwaita Dark e configura Oh My Zsh (tema duellj).
 - **LinuxToys:** Integração com ferramentas essenciais (download seguro com confirmação).
 - **Atualização do Sistema:** Atualiza todos os pacotes com `pacman -Syu` antes de instalar novos.
 - **Limpeza do Sistema:**
@@ -126,7 +128,7 @@ bash install.sh --dry-run --verbose
 
 ### Menu Interativo de Configuração
 
-Antes da execução, o script apresenta um **menu interativo** com 4 perguntas:
+Antes da execução, o script apresenta um **menu interativo** com 5 perguntas:
 
 **1. AUR Helper (Gerenciador de AUR):**
 - **a) Paru** (padrão) - Mais rápido e moderno, recomendado
@@ -152,7 +154,11 @@ Escolha quais apps deseja instalar:
 - Easy Effects
 - Ignition
 - Brave Browser
+- AdwSteamGtk
 - GNOME Extension Manager
+
+**5. Reinício do Script:**
+Escolha se o script deve reiniciar automaticamente após a execução.
 
 Você pode aceitar os padrões pressionando Enter, ou escolher suas preferências.
 
@@ -191,6 +197,7 @@ O script também suporta argumentos para maior controle e segurança:
 | `--skip-chaotic` | Pula a instalação do repositório Chaotic AUR. |
 | `--skip-flatpak` | Pula a instalação do Flatpak e aplicativos Flathub. |
 | `--skip-pamac` | Pula a instalação do Pamac (gerenciador de pacotes gráfico). |
+| `--skip-extras` | Pula a instalação de apps e temas essenciais. |
 | `--skip-dns` | Pula a configuração de DNS. |
 | `--skip-linuxtoys` | Pula a instalação do LinuxToys. |
 | `--skip-cleanup` | Pula a limpeza final do sistema. |
