@@ -1,0 +1,221 @@
+[H[2J[3J
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                                                                           ║
+║   ██╗    ██╗███████╗██╗     ██╗      █████╗ ██████╗  ██████╗██╗  ██╗      ║
+║   ██║    ██║██╔════╝██║     ██║     ██╔══██╗██╔══██╗██╔════╝██║  ██║      ║
+║   ██║ █╗ ██║█████╗  ██║     ██║     ███████║██████╔╝██║     ███████║      ║
+║   ██║███╗██║██╔══╝  ██║     ██║     ██╔══██║██╔══██╗██║     ██╔══██║      ║
+║   ╚███╔███╔╝███████╗███████╗███████╗██║  ██║██║  ██║╚██████╗██║  ██║      ║
+║    ╚══╝╚══╝ ╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝      ║ 
+║                                                                           ║
+║              Automação, Pós-Instalação e Otimização                       ║
+║                        para Arch Linux v15.0                              ║
+║                                                                           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+
+👤 Desenvolvido para: Wesley
+📦 Gerenciador de instalação e otimização do sistema
+═══════════════════════════════════════════════════════════
+📝 RESUMO DO QUE SERÁ FEITO:
+   1. Validação do Sistema
+   2. AUR Helper & Chaotic AUR
+   3. Flatpak & Flathub
+   4. Aplicativos Flatpak
+   5. Gerenciador Pamac
+   6. Apps e Temas Essenciais
+   7. LinuxToys
+   8. Configuração de DNS
+   9. Configuração Visual e Shell
+   10. Limpeza do Sistema
+-------------------------------------------------------------
+
+
+⚙️  CONFIGURAÇÕES PRÉ-INSTALAÇÃO
+-------------------------------------------------------------
+
+1. Qual AUR Helper você deseja?
+   a) Paru (padrão, mais rápido)
+   b) Yay (alternativa)
+✓ Escolhido: Paru
+
+2. Qual versão do Pamac você deseja?
+   a) Pamac-all (com GUI + Flatpak + AUR, padrão)
+   b) Pamac-aur (apenas CLI + AUR)
+✓ Escolhido: Pamac-all
+
+3. Qual provedor de DNS você deseja?
+   a) Cloudflare (padrão, 1.1.1.1) - Privacidade
+   b) Quad9 (9.9.9.9) - Segurança
+   c) Google (8.8.8.8) - Velocidade
+   d) AdGuard (94.140.14.14) - Bloqueia anúncios
+   e) Manter padrão do sistema (sem alterações)
+✓ Escolhido: Cloudflare
+
+4. Selecione os aplicativos Flatpak a instalar:
+✓ 9 aplicativo(s) selecionado(s)
+
+✓ Sem reinício do sistema
+
+Configurações confirmadas!
+-------------------------------------------------------------
+
+╔═════════════════════════════════════════════════════════╗
+║   📝 RESUMO DAS CONFIGURAÇÕES                          ║
+╠═════════════════════════════════════════════════════════╣
+║   AUR Helper:     paru
+║   Pamac:          pamac-all
+║   DNS:            cloudflare
+║   Flatpaks:       9 selecionado(s)
+║   Reiniciar:      false
+║   Dry-run:        true
+╚═════════════════════════════════════════════════════════╝
+
+
+🚀 Iniciando WELLARCH v15.0.0...
+(dry-run) pulando validação de permissões sudo.
+🌐 Verificando conectividade com internet...
+💾 Verificando espaço em disco...
+🔧 Instalando base-devel (dependências de compilação)...
+(dry-run) CMD: timeout
+300
+sudo
+pacman
+-S
+--needed
+base-devel
+--noconfirm
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[1/12] Atualização do Sistema
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+(dry-run) pulando pacman -Syu
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2/12] Otimização de Mirrors
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+(dry-run) pulando atualização de mirrors com reflector
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[3/12] Configuração do Chaotic AUR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Chaotic AUR já está configurado. Pulando.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[4/12] Instalação do AUR Helper
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ paru já está instalado. Pulando.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[5/12] Configuração do Flatpak
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Flatpak já está instalado.
+✅ Repositório Flathub já ativo. Pulando.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[6/12] Instalação de Apps Flatpak
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📱 Instalando aplicativos Flatpak selecionados...
+   ⬇️  Instalando com.rtosta.zapzap...
+   (dry-run) pulando instalação de com.rtosta.zapzap
+   ⬇️  Instalando org.telegram.desktop...
+   (dry-run) pulando instalação de org.telegram.desktop
+   ⬇️  Instalando com.vysp3r.ProtonPlus...
+   (dry-run) pulando instalação de com.vysp3r.ProtonPlus
+   ⬇️  Instalando org.equicord.equibop...
+   (dry-run) pulando instalação de org.equicord.equibop
+   ⬇️  Instalando com.github.wwmm.easyeffects...
+   (dry-run) pulando instalação de com.github.wwmm.easyeffects
+   ⬇️  Instalando io.github.flattool.Ignition...
+   (dry-run) pulando instalação de io.github.flattool.Ignition
+   ⬇️  Instalando com.brave.Browser...
+   (dry-run) pulando instalação de com.brave.Browser
+   ⬇️  Instalando io.github.Foldex.AdwSteamGtk...
+   (dry-run) pulando instalação de io.github.Foldex.AdwSteamGtk
+   ⬇️  Instalando com.mattjakeman.ExtensionManager...
+   (dry-run) pulando instalação de com.mattjakeman.ExtensionManager
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[7/12] Instalação do Pamac
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Pamac já está instalado. Pulando.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[8/12] Apps e Temas Essenciais
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Cursor Fluent (fluent-cursor-theme) já está instalado. Pulando.
+✅ GNOME Themes Extra (gnome-themes-extra) já está instalado. Pulando.
+✅ Visual Studio Code (code) já está instalado. Pulando.
+✅ Papirus Icon Theme (papirus-icon-theme) já está instalado. Pulando.
+✅ GDM Settings (gdm-settings) já está instalado. Pulando.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[9/12] Instalação do LinuxToys
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ LinuxToys já foi executado. Pulando.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[10/12] Configuração de DNS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌐 Configurando DNS (IPv4 e IPv6)...
+(dry-run) CMD: sudo
+mkdir
+-p
+/etc/NetworkManager/conf.d/
+   📄 Configuração do NetworkManager criada para cloudflare.
+   🗂️  Backup de resolv.conf salvo em /etc/resolv.conf.wellarch.bak
+(dry-run) CMD: sudo
+rm
+-f
+/etc/resolv.conf
+   ℹ️  resolv.conf atualizado. Use --force-resolv-lock para travar (não recomendado).
+   🔧 Aplicando DNS na conexão: Conexão cabeada 1
+   🔧 Aplicando DNS na conexão: lo
+   🔄 Reiniciando NetworkManager...
+(dry-run) CMD: sudo
+systemctl
+restart
+NetworkManager
+✅ DNS configurado (IPv4/IPv6)!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[11/12] Configuração Visual e Shell
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+(dry-run) aplicaria temas de ícones
+✅ Zsh (zsh) já está instalado. Pulando.
+✅ Git (git) já está instalado. Pulando.
+✅ Curl (curl) já está instalado. Pulando.
+(dry-run) instalaria Oh My Zsh e aplicaria tema duellj
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[12/12] Limpeza do Sistema
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧹 Limpeza do Sistema...
+   📦 Limpando cache do Pacman...
+   (dry-run) pulando pacman -Sc destrutivo
+   ✅ Nenhum órfão encontrado.
+   🦄 Limpando cache do AUR Helper...
+   (dry-run) pulando limpeza do cache do paru
+   📱 Limpando Flatpaks...
+   📜 Limpando logs...
+
+════════════════════════════════════════════════════════════
+✨ RELATÓRIO FINAL DA INSTALAÇÃO ✨
+════════════════════════════════════════════════════════════
+
+⏱️  TEMPO DE EXECUÇÃO: 0m 1s
+
+📋 CONFIGURAÇÕES SELECIONADAS:
+   AUR Helper: paru
+   Pamac: pamac-all
+   DNS: cloudflare
+
+📦 PACOTES INSTALADOS: 1
+   ✓ DNS: cloudflare
+
+════════════════════════════════════════════════════════════
+✨🎉 SETUP COMPLETO! SISTEMA OTIMIZADO. 🎉✨
+════════════════════════════════════════════════════════════
+
+📝 LOG COMPLETO DISPONÍVEL EM: /home/wesley/.cache/wellarch/wellarch.log
+
