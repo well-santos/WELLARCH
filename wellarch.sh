@@ -399,9 +399,13 @@ validate_environment() {
 		exit 1
 	fi
 
-	log_info "🔑 Validando permissões sudo..."
-	if ! sudo -v; then
-		parar_com_erro "Acesso sudo recusado. Você precisa de privilégios sudo."
+	if [[ "${DRY_RUN:-false}" == true ]]; then
+		log_info "(dry-run) pulando validação de permissões sudo."
+	else
+		log_info "🔑 Validando permissões sudo..."
+		if ! sudo -v; then
+			parar_com_erro "Acesso sudo recusado. Você precisa de privilégios sudo."
+		fi
 	fi
 
 	# Verifica conectividade
@@ -841,7 +845,9 @@ validate_environment
 ensure_base_devel
 
 # Mantém sudo vivo (background) e guarda PID para cleanup
-start_sudo_keepalive
+if [[ "${DRY_RUN:-false}" != true ]]; then
+	start_sudo_keepalive
+fi
 
 # ---------------------------------------------------------
 # 1. ATUALIZAÇÃO DO SISTEMA (pacman -Syu)
@@ -1397,7 +1403,8 @@ configure_oh_my_zsh() {
 	fi
 
 	if command -v gsettings >/dev/null 2>&1; then
-		profile_id=$(gsettings get org.gnome.Terminal.ProfilesList default 2>/dev/null | tr -d "'")
+		profile_id=$(gsettings get org.gnome.Terminal.ProfilesList default 2>/dev/null || true)
+		profile_id=${profile_id//\'/}
 		if [[ -n "$profile_id" ]]; then
 			gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${profile_id}/" use-custom-command false >/dev/null 2>&1 || true
 			gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${profile_id}/" custom-command "" >/dev/null 2>&1 || true
