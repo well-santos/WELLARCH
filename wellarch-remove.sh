@@ -1,44 +1,72 @@
 #!/bin/bash
-
+# ==============================================================================
+# WELLARCH Remover v15.1.0
 # Script para remover/desfazer alterações do WELLARCH
+# ==============================================================================
+
 # Ativa modo seguro
 set -euo pipefail
 IFS=$'\n\t'
 
-# ==============================================================================
-# DEFINIÇÃO DE CORES
-# ==============================================================================
-VERDE='\033[0;32m'
-VERMELHO='\033[0;31m'
-AMARELO='\033[1;33m'
-AZUL='\033[0;36m'
-ROXO='\033[0;35m'
-NC='\033[0m'
+# Script directory for sourcing libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Desativa cores em ambientes não interativos
-if [ ! -t 1 ]; then
-    VERDE=''
-    VERMELHO=''
-    AMARELO=''
-    AZUL=''
-    ROXO=''
-    NC=''
+# Source common library if available
+if [[ -f "${SCRIPT_DIR}/lib/common.sh" ]]; then
+    # shellcheck source=lib/common.sh
+    source "${SCRIPT_DIR}/lib/common.sh"
+    USING_COMMON_LIB=true
+else
+    USING_COMMON_LIB=false
+    
+    # Inline definitions
+    if [[ -t 1 ]]; then
+        VERDE='\033[0;32m'
+        VERMELHO='\033[0;31m'
+        AMARELO='\033[1;33m'
+        AZUL='\033[0;36m'
+        ROXO='\033[0;35m'
+        NC='\033[0m'
+    else
+        VERDE='' VERMELHO='' AMARELO='' AZUL='' ROXO='' NC=''
+    fi
+    
+    parar_com_erro() {
+        echo -e "${VERMELHO}❌ ERRO: $1 ${NC}"
+        exit 1
+    }
+    
+    is_installed() {
+        command -v "$1" &> /dev/null
+    }
+    
+    is_pkg_installed() {
+        pacman -Qi "$1" >/dev/null 2>&1
+    }
 fi
 
-# ==============================================================================
-# FUNÇÕES
-# ==============================================================================
-parar_com_erro() {
-    echo -e "${VERMELHO}❌ ERRO: $1 ${NC}"
-    exit 1
+VERSION="${WELLARCH_VERSION:-15.1.0}"
+LOGFILE="${HOME}/.cache/wellarch/wellarch-remove.log"
+mkdir -p "$(dirname "$LOGFILE")"
+
+# Logging
+log_to_file() {
+    echo "$(date '+%Y-%m-%dT%H:%M:%S%z') $*" >> "$LOGFILE"
 }
 
-is_installed() {
-    command -v "$1" &> /dev/null
+log_info() {
+    echo -e "${AZUL}$*${NC}"
+    log_to_file "[INFO] $*"
 }
 
-is_pkg_installed() {
-    pacman -Qi "$1" >/dev/null 2>&1
+log_success() {
+    echo -e "${VERDE}✓ $*${NC}"
+    log_to_file "[SUCCESS] $*"
+}
+
+log_warn() {
+    echo -e "${AMARELO}⚠️ $*${NC}"
+    log_to_file "[WARN] $*"
 }
 
 # ==============================================================================
@@ -46,12 +74,14 @@ is_pkg_installed() {
 # ==============================================================================
 clear
 echo -e "${AZUL}"
-echo "WELLARCH REMOVER v15.0.0"
+echo "WELLARCH REMOVER v${VERSION}"
 echo -e "${NC}"
 echo -e "${ROXO}:: Script de Desinstalação para WELLARCH ::${NC}"
 echo -e "-------------------------------------------------------------"
 echo -e "${VERMELHO}⚠️  AVISO: Este script removerá alterações feitas pelo WELLARCH${NC}"
 echo ""
+
+log_to_file "=== WELLARCH REMOVER v${VERSION} iniciado ==="
 
 # Valida root
 if [ "$EUID" -eq 0 ]; then
@@ -147,10 +177,12 @@ EXTRA_PKGS=(
     "visual-studio-code-bin"
     "papirus-icon-theme"
     "gdm-settings"
+    "plymouth"
 )
 REMOVED_EXTRA=false
 for pkg in "${EXTRA_PKGS[@]}"; do
     if is_pkg_installed "$pkg"; then
+        echo "   Removendo $pkg..."
         sudo pacman -Rns "$pkg" --noconfirm 2>/dev/null || true
         REMOVED_EXTRA=true
     fi
@@ -217,7 +249,27 @@ echo -e "${AZUL}9. Limpeza final...${NC}"
 echo "   Atualizando repositórios..."
 sudo pacman -Sy --noconfirm > /dev/null
 echo -e "   ${VERDE}✓ Repositórios atualizados${NC}"
+
+# Remover diretório de configuração WELLARCH
+if [ -d "${HOME}/.config/wellarch" ]; then
+    read -rp "   Remover configurações do WELLARCH em ~/.config/wellarch? (y/n): " remove_config
+    if [[ "$remove_config" =~ ^[yY]$ ]]; then
+        rm -rf "${HOME}/.config/wellarch"
+        echo -e "   ${VERDE}✓ Configurações removidas${NC}"
+    fi
+fi
+
+# Remover cache do WELLARCH
+if [ -d "${HOME}/.cache/wellarch" ]; then
+    read -rp "   Remover cache do WELLARCH em ~/.cache/wellarch? (y/n): " remove_cache
+    if [[ "$remove_cache" =~ ^[yY]$ ]]; then
+        rm -rf "${HOME}/.cache/wellarch"
+        echo -e "   ${VERDE}✓ Cache removido${NC}"
+    fi
+fi
 echo ""
+
+log_to_file "=== WELLARCH REMOVER v${VERSION} finalizado ==="
 
 # ==============================================================================
 # RESUMO FINAL
@@ -230,7 +282,7 @@ echo -e "${AMARELO}📝 RESUMO:${NC}"
 echo "   • AUR Helper removido"
 echo "   • Chaotic AUR removido"
 echo "   • Pamac removido"
-echo "   • Apps/temas essenciais removidos"
+echo "   • Apps/temas essenciais removidos (incluindo Plymouth)"
 echo "   • Flatpak e aplicativos removidos"
 echo "   • Configurações de DNS removidas"
 echo ""
@@ -238,4 +290,7 @@ echo -e "${AMARELO}ℹ️  NOTAS:${NC}"
 echo "   • Pacotes dependentes podem ter sido removidos"
 echo "   • Arquivos pessoais criados pelos apps foram preservados"
 echo "   • Backup de pacman.conf mantido em /etc/pacman.conf.bak se existir"
+echo "   • Log disponível em: $LOGFILE"
 echo ""
+
+exit 0

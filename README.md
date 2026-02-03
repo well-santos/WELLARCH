@@ -1,4 +1,4 @@
-# WELLARCH v15.0.0
+# WELLARCH v15.1.0
 
 Automação, pós-instalação e otimização para Arch Linux.
 
@@ -6,7 +6,20 @@ O **WELLARCH** é um script de shell robusto projetado para transformar uma inst
 
 ---
 
-## ✨ Novidades da v15.0.0
+## ✨ Novidades da v15.1.0
+
+- **Biblioteca Compartilhada:** Novo `lib/common.sh` com funções reutilizáveis e constantes
+- **Arquivo de Configuração:** Suporte a arquivo de configuração (`--config` e `--save-config`)
+- **Flag --uninstall:** Desinstalar diretamente via `./wellarch.sh --uninstall`
+- **Verificação de Bash:** Valida versão mínima do Bash (4.0+)
+- **Plymouth Implementado:** Instalação completa do Plymouth com configuração de boot
+- **Exit Code Correto:** Retorna código 1 quando há falhas
+- **Testes Automatizados:** Suite de testes em `tests/test_functions.sh`
+- **Makefile Melhorado:** Novos targets: `test`, `help`, `dry-run`
+- **CONTRIBUTING.md:** Guia completo para contribuidores
+- **Validação de Entrada:** Menus com validação de opções
+
+### Novidades da v15.0.0
 
 - **Skip Flags:** 10 novas flags para pular etapas específicas (veja abaixo)
 - **Indicadores de Progresso:** Exibe passo atual e total durante execução
@@ -199,6 +212,9 @@ O script também suporta argumentos para maior controle e segurança:
 |------|-----------|
 | `--dry-run` | Simula a execução sem fazer alterações destrutivas no sistema. Ideal para testes e validação. |
 | `--yes`, `-y` | Assume "sim" automaticamente para todos os prompts interativos (sem perguntar). |
+| `--config ARQUIVO` | Carrega configurações de um arquivo. Exemplo: `--config ~/.config/wellarch/config` |
+| `--save-config` | Salva as configurações atuais para arquivo após execução. |
+| `--uninstall` | Executa o script de desinstalação para remover alterações do WELLARCH. |
 | `--force-resolv-lock` | **Ativa** o travamento de `/etc/resolv.conf` com `chattr +i`. ⚠️ Use com cuidado — pode dificultar alterações futuras. |
 | `--skip-resolv-conf` | Não sobrescreve `/etc/resolv.conf` (recomendado quando `systemd-resolved` está ativo). |
 | `--log-level` | Define nível de log: `debug`, `info`, `warn`, `error`. |
@@ -215,7 +231,9 @@ O script também suporta argumentos para maior controle e segurança:
 | `--skip-dns` | Pula a configuração de DNS. |
 | `--skip-linuxtoys` | Pula a instalação do LinuxToys. |
 | `--skip-cleanup` | Pula a limpeza final do sistema. |
+| `--skip-plymouth` | Pula a instalação e configuração do Plymouth boot splash. |
 | `--verbose` | Exibe saída detalhada durante a execução. |
+| `--version` | Exibe a versão do script. |
 | `--help`, `-h` | Exibe a mensagem de ajuda e sai. |
 
 ### Exemplos de Uso

@@ -1,10 +1,14 @@
 #!/bin/bash
-
-# WELLARCH Installer v15.0.0
+# ==============================================================================
+# WELLARCH Installer v15.1.0
 # Downloads and executes WELLARCH from GitHub
 # Usage: curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh | bash
+# ==============================================================================
 
 set -euo pipefail
+
+# Version
+VERSION="15.1.0"
 
 # Colors
 VERDE='\033[0;32m'
@@ -148,7 +152,7 @@ show_banner() {
     cat << "EOF"
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
-║            WELLARCH Installer v15.0                          ║
+║            WELLARCH Installer v15.1                           ║
 ║   Automação e Otimização para Arch Linux                     ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝

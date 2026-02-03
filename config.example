@@ -1,0 +1,85 @@
+# ==============================================================================
+# WELLARCH Configuration File Example
+# Copy to ~/.config/wellarch/config and customize
+# Usage: ./wellarch.sh --config ~/.config/wellarch/config
+# ==============================================================================
+
+# AUR Helper: paru or yay
+# paru is recommended (faster and more modern)
+AUR_HELPER="paru"
+
+# Pamac Package: pamac-all or pamac-aur
+# pamac-all: Full GUI with Flatpak and AUR support
+# pamac-aur: CLI only with AUR support
+PAMAC_PKG="pamac-all"
+
+# DNS Provider: cloudflare, quad9, google, adguard, or none
+# cloudflare: 1.1.1.1 - Privacy focused
+# quad9: 9.9.9.9 - Security focused
+# google: 8.8.8.8 - High availability
+# adguard: 94.140.14.14 - Ad blocking
+# none: Keep system default
+DNS_PROVIDER="cloudflare"
+
+# ==============================================================================
+# Skip Flags (true/false)
+# Set to true to skip specific installation steps
+# ==============================================================================
+
+# Skip system update (pacman -Syu)
+SKIP_UPDATE="false"
+
+# Skip mirror optimization with reflector
+SKIP_MIRRORS="false"
+
+# Skip Chaotic AUR repository configuration
+SKIP_CHAOTIC="false"
+
+# Skip Flatpak and Flathub configuration
+SKIP_FLATPAK="false"
+
+# Skip Pamac installation
+SKIP_PAMAC="false"
+
+# Skip extra apps and themes (VS Code, Papirus, etc.)
+SKIP_EXTRAS="false"
+
+# Skip DNS configuration
+SKIP_DNS="false"
+
+# Skip LinuxToys installation
+SKIP_LINUXTOYS="false"
+
+# Skip system cleanup at the end
+SKIP_CLEANUP="false"
+
+# Skip Plymouth boot splash configuration
+SKIP_PLYMOUTH="false"
+
+# ==============================================================================
+# Other Options
+# ==============================================================================
+
+# Lock /etc/resolv.conf with chattr +i
+# WARNING: This can make DNS changes difficult
+FORCE_RESOLV_LOCK="false"
+
+# Skip modifications to /etc/resolv.conf
+# Recommended when using systemd-resolved
+SKIP_RESOLV_CONF="false"
+
+# Restart system after installation
+RESTART_SYSTEM="false"
+
+# ==============================================================================
+# Advanced Options (set via command line or environment)
+# ==============================================================================
+
+# Download timeout in seconds (default: 300)
+# DOWNLOAD_TIMEOUT="300"
+
+# Number of download retries (default: 3)
+# DOWNLOAD_RETRIES="3"
+
+# Log level: debug, info, warn, error (default: info)
+# LOG_LEVEL="info"

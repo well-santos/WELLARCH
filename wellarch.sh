@@ -1,41 +1,57 @@
 #!/bin/bash
+# ==============================================================================
+# WELLARCH - Automação e Otimização para Arch Linux
+# Version: 15.1.0
+# ==============================================================================
 
 # Safer bash defaults
 set -euo pipefail
 set -o errtrace
 IFS=$'\n\t'
 
-# Log tudo para arquivo (sem redirecionar stdout para evitar problemas de exibição)
-LOGFILE="$HOME/.cache/wellarch/wellarch.log"
-mkdir -p "$(dirname "$LOGFILE")"
+# Script directory for sourcing libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Função para gravar log com timestamp
-log_to_file() {
-	echo "$(date '+%Y-%m-%dT%H:%M:%S%z') $*" >> "$LOGFILE"
-}
-
-# ==============================================================================
-# DEFINIÇÃO DE CORES
-# ==============================================================================
-VERDE='\033[0;32m'
-VERMELHO='\033[0;31m'
-AMARELO='\033[1;33m'
-AZUL='\033[0;36m' # Ciano
-ROXO='\033[0;35m'
-NC='\033[0m' # Sem cor
-
-# Desativa cores em ambientes não interativos para evitar saída "estranha"
-if [ ! -t 1 ]; then
-	VERDE=''
-	VERMELHO=''
-	AMARELO=''
-	AZUL=''
-	ROXO=''
-	NC=''
+# Source common library if available, otherwise use inline definitions
+if [[ -f "${SCRIPT_DIR}/lib/common.sh" ]]; then
+    # shellcheck source=lib/common.sh
+    source "${SCRIPT_DIR}/lib/common.sh"
+    USING_COMMON_LIB=true
+else
+    USING_COMMON_LIB=false
+    
+    # Inline color definitions when library not available
+    if [[ -t 1 ]]; then
+        VERDE='\033[0;32m'
+        VERMELHO='\033[0;31m'
+        AMARELO='\033[1;33m'
+        AZUL='\033[0;36m'
+        ROXO='\033[0;35m'
+        NC='\033[0m'
+    else
+        VERDE='' VERMELHO='' AMARELO='' AZUL='' ROXO='' NC=''
+    fi
 fi
 
-# Versão do script (Semantic Versioning)
-VERSION="15.0.0"
+# Verify Bash version (requires 4.0+)
+if ((BASH_VERSINFO[0] < 4)); then
+    echo -e "${VERMELHO:-}❌ ERRO: Requer Bash 4.0 ou superior. Versão atual: ${BASH_VERSION}${NC:-}" >&2
+    exit 1
+fi
+
+# Log directory and file
+LOGFILE="${WELLARCH_LOG_FILE:-$HOME/.cache/wellarch/wellarch.log}"
+mkdir -p "$(dirname "$LOGFILE")"
+
+# Inline log_to_file if library not loaded
+if [[ "$USING_COMMON_LIB" != true ]]; then
+    log_to_file() {
+        echo "$(date '+%Y-%m-%dT%H:%M:%S%z') $*" >> "$LOGFILE"
+    }
+fi
+
+# Version (Semantic Versioning)
+VERSION="${WELLARCH_VERSION:-15.1.0}"
 
 # Configurações gerais
 LOG_LEVEL="info"
@@ -48,7 +64,7 @@ SKIP_RESOLV_CONF=false
 POST_CHECK=false
 
 # Contadores de progresso
-TOTAL_STEPS=12
+TOTAL_STEPS=13
 CURRENT_STEP=0
 
 # Função para mostrar progresso
@@ -62,32 +78,26 @@ show_progress() {
 	log_to_file "[${CURRENT_STEP}/${TOTAL_STEPS}] ${step_name}"
 }
 
-# Logging helpers
+# Logging helpers (inline definitions if library not loaded)
 VERBOSE=false
-set_log_level() {
-	case "${1,,}" in
-	debug)
-		LOG_LEVEL_NUM=3
-		;;
-	info)
-		LOG_LEVEL_NUM=2
-		;;
-	warn | warning)
-		LOG_LEVEL_NUM=1
-		;;
-	error)
-		LOG_LEVEL_NUM=0
-		;;
-	*)
-		echo -e "${VERMELHO}❌ LOG_LEVEL inválido: $1 (use debug|info|warn|error)${NC}"
-		exit 1
-		;;
-	esac
-}
-log_debug() { [[ "$VERBOSE" == true && "$LOG_LEVEL_NUM" -ge 3 ]] && echo -e "${AZUL}[DEBUG]${NC} $*"; }
-log_info() { [[ "$LOG_LEVEL_NUM" -ge 2 ]] && echo -e "${AZUL}$*${NC}"; }
-log_warn() { [[ "$LOG_LEVEL_NUM" -ge 1 ]] && echo -e "${AMARELO}$*${NC}"; }
-log_error() { [[ "$LOG_LEVEL_NUM" -ge 0 ]] && echo -e "${VERMELHO}$*${NC}"; }
+if [[ "$USING_COMMON_LIB" != true ]]; then
+    set_log_level() {
+        case "${1,,}" in
+            debug) LOG_LEVEL_NUM=3 ;;
+            info) LOG_LEVEL_NUM=2 ;;
+            warn|warning) LOG_LEVEL_NUM=1 ;;
+            error) LOG_LEVEL_NUM=0 ;;
+            *)
+                echo -e "${VERMELHO}❌ LOG_LEVEL inválido: $1 (use debug|info|warn|error)${NC}"
+                exit 1
+                ;;
+        esac
+    }
+    log_debug() { [[ "$VERBOSE" == true && "$LOG_LEVEL_NUM" -ge 3 ]] && echo -e "${AZUL}[DEBUG]${NC} $*"; }
+    log_info() { [[ "$LOG_LEVEL_NUM" -ge 2 ]] && echo -e "${AZUL}$*${NC}"; }
+    log_warn() { [[ "$LOG_LEVEL_NUM" -ge 1 ]] && echo -e "${AMARELO}$*${NC}"; }
+    log_error() { [[ "$LOG_LEVEL_NUM" -ge 0 ]] && echo -e "${VERMELHO}$*${NC}"; }
+fi
 
 # ==============================================================================
 # FUNÇÕES AUXILIARES
@@ -465,9 +475,51 @@ SKIP_EXTRAS=false
 SKIP_DNS=false
 SKIP_LINUXTOYS=false
 SKIP_CLEANUP=false
+SKIP_PLYMOUTH=false
 RESTART_SYSTEM=false
+SAVE_CONFIG=false
+CONFIG_FILE=""
+
+# Load config file if specified via environment
+if [[ -n "${WELLARCH_CONFIG:-}" && -f "$WELLARCH_CONFIG" ]]; then
+    # shellcheck source=/dev/null
+    source "$WELLARCH_CONFIG"
+fi
+
 while [ $# -gt 0 ]; do
 	case "${1-}" in
+	--uninstall)
+		# Run uninstall script if available
+		if [[ -f "${SCRIPT_DIR}/wellarch-remove.sh" ]]; then
+			exec bash "${SCRIPT_DIR}/wellarch-remove.sh"
+		elif [[ -f "$HOME/.local/bin/wellarch-remove.sh" ]]; then
+			exec bash "$HOME/.local/bin/wellarch-remove.sh"
+		else
+			echo -e "${VERMELHO}❌ Script de desinstalação não encontrado.${NC}"
+			echo "Baixe de: https://github.com/well-santos/WELLARCH"
+			exit 1
+		fi
+		;;
+	--config)
+		if [[ -z "${2-}" ]]; then
+			echo -e "${VERMELHO}❌ --config requer um caminho para arquivo.${NC}"
+			exit 1
+		fi
+		CONFIG_FILE="$2"
+		if [[ -f "$CONFIG_FILE" ]]; then
+			# shellcheck source=/dev/null
+			source "$CONFIG_FILE"
+			echo -e "${AZUL}📄 Configuração carregada de $CONFIG_FILE${NC}"
+		else
+			echo -e "${VERMELHO}❌ Arquivo de configuração não encontrado: $CONFIG_FILE${NC}"
+			exit 1
+		fi
+		shift 2
+		;;
+	--save-config)
+		SAVE_CONFIG=true
+		shift
+		;;
 	--dry-run)
 		DRY_RUN=true
 		shift
@@ -557,6 +609,10 @@ while [ $# -gt 0 ]; do
 		SKIP_CLEANUP=true
 		shift
 		;;
+	--skip-plymouth)
+		SKIP_PLYMOUTH=true
+		shift
+		;;
 	--post-check)
 		POST_CHECK=true
 		shift
@@ -571,15 +627,18 @@ ${AMARELO}USO:${NC}
 ${AMARELO}OPÇÕES GERAIS:${NC}
   --dry-run              Simula execução sem fazer alterações
   --verbose              Ativa mensagens de debug
-	--log-level NIVEL       Define nível de log (debug|info|warn|error)
-	--download-timeout SEG  Timeout de downloads em segundos (0 desativa)
-	--download-retries N    Número de tentativas para downloads
-	--non-interactive       Evita prompts (use com --yes)
+  --log-level NIVEL      Define nível de log (debug|info|warn|error)
+  --download-timeout SEG Timeout de downloads em segundos (0 desativa)
+  --download-retries N   Número de tentativas para downloads
+  --non-interactive      Evita prompts (use com --yes)
   --version              Exibe versão do script
   --yes, -y              Assume "sim" para todos os prompts
   --force-resolv-lock    Trava /etc/resolv.conf com chattr +i
-	--skip-resolv-conf      Não sobrescreve /etc/resolv.conf
-	--post-check            Executa verificação pós-instalação
+  --skip-resolv-conf     Não sobrescreve /etc/resolv.conf
+  --post-check           Executa verificação pós-instalação
+  --config ARQUIVO       Carrega configuração de arquivo
+  --save-config          Salva configurações atuais para arquivo
+  --uninstall            Executa script de desinstalação
   --help, -h             Exibe este menu de ajuda
 
 ${AMARELO}OPÇÕES DE SKIP (pular etapas):${NC}
@@ -592,6 +651,7 @@ ${AMARELO}OPÇÕES DE SKIP (pular etapas):${NC}
   --skip-dns             Pula configuração de DNS
   --skip-linuxtoys       Pula instalação do LinuxToys
   --skip-cleanup         Pula limpeza do sistema
+  --skip-plymouth        Pula instalação do Plymouth
 
 ${AMARELO}EXEMPLOS:${NC}
   # Executar normalmente:
@@ -600,6 +660,9 @@ ${AMARELO}EXEMPLOS:${NC}
   # Modo automático:
   $0 --yes
 
+  # Usar arquivo de configuração:
+  $0 --config ~/.config/wellarch/config
+
   # Pular DNS e Flatpak:
   $0 --skip-dns --skip-flatpak
 
@@ -607,6 +670,8 @@ ${AMARELO}EXEMPLOS:${NC}
   $0 --dry-run --yes
 
 ${AMARELO}DESINSTALAÇÃO:${NC}
+  $0 --uninstall
+  # ou
   ./wellarch-remove.sh
 EOF
 		exit 0
@@ -637,7 +702,7 @@ cat <<"EOF"
 ║    ╚══╝╚══╝ ╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝      ║ 
 ║                                                                           ║
 ║              Automação, Pós-Instalação e Otimização                       ║
-║                        para Arch Linux v15.0                              ║
+║                        para Arch Linux v15.1                              ║
 ║                                                                           ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
 EOF
@@ -656,7 +721,8 @@ echo -e "   6. Apps e Temas Essenciais"
 echo -e "   7. LinuxToys"
 echo -e "   8. Configuração de DNS"
 echo -e "   9. Configuração Visual e Shell"
-echo -e "   10. Limpeza do Sistema"
+echo -e "  10. Plymouth Boot Splash"
+echo -e "  11. Limpeza do Sistema"
 echo -e "-------------------------------------------------------------"
 echo ""
 
@@ -1421,7 +1487,131 @@ configure_oh_my_zsh
 IFS="$ORIGINAL_IFS"
 
 # ---------------------------------------------------------
-# 12. LIMPEZA
+# 12. PLYMOUTH BOOT SPLASH
+# ---------------------------------------------------------
+setup_plymouth() {
+	show_progress "Plymouth Boot Splash"
+	
+	if [[ "$SKIP_PLYMOUTH" == true ]]; then
+		echo -e "${AMARELO}⏭️  Pulando Plymouth (--skip-plymouth)${NC}"
+		add_skipped_step "Plymouth Boot Splash"
+		return 0
+	fi
+	
+	if [[ "${DRY_RUN:-false}" == true ]]; then
+		echo -e "${AMARELO}(dry-run) instalaria Plymouth e configuraria boot splash${NC}"
+		return 0
+	fi
+	
+	echo "🎨 Configurando Plymouth Boot Splash..."
+	
+	# Instalar Plymouth
+	if ! is_pkg_installed plymouth; then
+		echo "   📦 Instalando Plymouth..."
+		if ! sudo_run_retry "Instalação do Plymouth" pacman -S --needed plymouth --noconfirm; then
+			echo -e "${AMARELO}⚠️ Falha ao instalar Plymouth.${NC}"
+			FAILED_ITEMS+=("Plymouth")
+			return 0
+		fi
+		INSTALLED_PACKAGES+=("Plymouth")
+	else
+		echo "   ✅ Plymouth já está instalado."
+	fi
+	
+	# Configurar mkinitcpio para incluir plymouth
+	local MKINITCPIO_CONF="/etc/mkinitcpio.conf"
+	if [[ -f "$MKINITCPIO_CONF" ]]; then
+		backup_file "$MKINITCPIO_CONF" "${MKINITCPIO_CONF}.wellarch.bak"
+		
+		# Adicionar plymouth aos hooks se não existir
+		if ! grep -q "plymouth" "$MKINITCPIO_CONF"; then
+			echo "   🔧 Adicionando Plymouth aos hooks do mkinitcpio..."
+			# Inserir plymouth após base e udev
+			sudo sed -i 's/\(HOOKS=.*base\) \(udev\)/\1 \2 plymouth/' "$MKINITCPIO_CONF" 2>/dev/null || true
+			
+			# Regenerar initramfs
+			echo "   🔄 Regenerando initramfs..."
+			if sudo_run mkinitcpio -P; then
+				echo -e "   ${VERDE}✅ Initramfs regenerado com Plymouth${NC}"
+			else
+				echo -e "   ${AMARELO}⚠️ Aviso ao regenerar initramfs${NC}"
+			fi
+		else
+			echo "   ✅ Plymouth já está nos hooks do mkinitcpio."
+		fi
+	fi
+	
+	# Configurar tema do Plymouth
+	local PLYMOUTH_THEME="bgrt"
+	local available_themes
+	available_themes=$(plymouth-set-default-theme --list 2>/dev/null || true)
+	
+	if [[ -n "$available_themes" ]]; then
+		# Preferência de temas: bgrt > spinner > fade-in > text
+		for theme in bgrt spinner fade-in text; do
+			if echo "$available_themes" | grep -q "^${theme}$"; then
+				PLYMOUTH_THEME="$theme"
+				break
+			fi
+		done
+		
+		echo "   🎨 Definindo tema Plymouth: $PLYMOUTH_THEME"
+		if sudo plymouth-set-default-theme "$PLYMOUTH_THEME" 2>/dev/null; then
+			echo -e "   ${VERDE}✅ Tema Plymouth definido: $PLYMOUTH_THEME${NC}"
+		fi
+	fi
+	
+	# Configurar bootloader (systemd-boot)
+	local LOADER_CONF="/boot/loader/loader.conf"
+	if [[ -f "$LOADER_CONF" ]]; then
+		backup_file "$LOADER_CONF" "${LOADER_CONF}.wellarch.bak"
+		
+		# Definir timeout para 0 (boot instantâneo)
+		if ! grep -q "^timeout 0" "$LOADER_CONF"; then
+			echo "   ⏱️  Configurando timeout do bootloader para 0..."
+			sudo sed -i 's/^timeout.*/timeout 0/' "$LOADER_CONF" 2>/dev/null || \
+				echo "timeout 0" | sudo tee -a "$LOADER_CONF" >/dev/null
+		fi
+	fi
+	
+	# Adicionar quiet splash às entradas do bootloader
+	local LOADER_ENTRIES="/boot/loader/entries"
+	if [[ -d "$LOADER_ENTRIES" ]]; then
+		echo "   🔧 Adicionando opções quiet splash às entradas do bootloader..."
+		for entry in "$LOADER_ENTRIES"/*.conf; do
+			if [[ -f "$entry" ]]; then
+				if ! grep -q "quiet splash" "$entry"; then
+					sudo sed -i '/^options/ s/$/ quiet splash/' "$entry" 2>/dev/null || true
+				fi
+			fi
+		done
+		echo -e "   ${VERDE}✅ Opções de boot atualizadas${NC}"
+	fi
+	
+	# GRUB (alternativa)
+	local GRUB_DEFAULT="/etc/default/grub"
+	if [[ -f "$GRUB_DEFAULT" ]]; then
+		backup_file "$GRUB_DEFAULT" "${GRUB_DEFAULT}.wellarch.bak"
+		
+		if ! grep -q "quiet splash" "$GRUB_DEFAULT"; then
+			echo "   🔧 Configurando GRUB para quiet splash..."
+			sudo sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="\([^"]*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 quiet splash"/' "$GRUB_DEFAULT" 2>/dev/null || true
+			
+			if is_installed grub-mkconfig; then
+				echo "   🔄 Regenerando configuração do GRUB..."
+				sudo grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null || true
+			fi
+		fi
+	fi
+	
+	echo -e "${VERDE}✅ Plymouth Boot Splash configurado!${NC}"
+	INSTALLED_PACKAGES+=("Plymouth Boot Splash")
+}
+
+setup_plymouth
+
+# ---------------------------------------------------------
+# 13. LIMPEZA
 # ---------------------------------------------------------
 show_progress "Limpeza do Sistema"
 
@@ -1588,6 +1778,48 @@ echo ""
 echo -e "${AMARELO}📝 LOG COMPLETO DISPONÍVEL EM:${NC} $LOGFILE"
 echo ""
 
+# Salvar configuração se solicitado
+if [[ "$SAVE_CONFIG" == true ]]; then
+	CONFIG_DIR="${HOME}/.config/wellarch"
+	mkdir -p "$CONFIG_DIR"
+	CONFIG_SAVE_FILE="${CONFIG_FILE:-${CONFIG_DIR}/config}"
+	
+	cat > "$CONFIG_SAVE_FILE" << CONFIGEOF
+# WELLARCH Configuration File
+# Generated on $(date '+%Y-%m-%d %H:%M:%S')
+# Use with: ./wellarch.sh --config $CONFIG_SAVE_FILE
+
+# AUR Helper: paru or yay
+AUR_HELPER="${AUR_HELPER}"
+
+# Pamac Package: pamac-all or pamac-aur
+PAMAC_PKG="${PAMAC_PKG}"
+
+# DNS Provider: cloudflare, quad9, google, adguard, or none
+DNS_PROVIDER="${DNS_PROVIDER}"
+
+# Skip flags (true/false)
+SKIP_UPDATE="${SKIP_UPDATE}"
+SKIP_MIRRORS="${SKIP_MIRRORS}"
+SKIP_CHAOTIC="${SKIP_CHAOTIC}"
+SKIP_FLATPAK="${SKIP_FLATPAK}"
+SKIP_PAMAC="${SKIP_PAMAC}"
+SKIP_EXTRAS="${SKIP_EXTRAS}"
+SKIP_DNS="${SKIP_DNS}"
+SKIP_LINUXTOYS="${SKIP_LINUXTOYS}"
+SKIP_CLEANUP="${SKIP_CLEANUP}"
+SKIP_PLYMOUTH="${SKIP_PLYMOUTH}"
+
+# Other options
+FORCE_RESOLV_LOCK="${FORCE_RESOLV_LOCK}"
+SKIP_RESOLV_CONF="${SKIP_RESOLV_CONF}"
+RESTART_SYSTEM="${RESTART_SYSTEM}"
+CONFIGEOF
+	
+	echo -e "${VERDE}✅ Configuração salva em: $CONFIG_SAVE_FILE${NC}"
+	echo ""
+fi
+
 # Gravar fim no log
 log_to_file "=== WELLARCH v${VERSION} finalizado em ${ELAPSED_MIN}m ${ELAPSED_SEC}s ==="
 log_to_file "Pacotes instalados: ${#INSTALLED_PACKAGES[@]} | Flatpaks: ${#INSTALLED_FLATPAKS[@]} | Falhas: ${#FAILED_ITEMS[@]}"
@@ -1606,3 +1838,10 @@ if [[ "$RESTART_SYSTEM" == true ]]; then
 		sudo_run systemctl reboot
 	fi
 fi
+
+# Exit code baseado em falhas
+if [[ ${#FAILED_ITEMS[@]} -gt 0 ]]; then
+	exit 1
+fi
+
+exit 0
