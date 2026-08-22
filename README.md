@@ -232,6 +232,7 @@ O script também suporta argumentos para maior controle e segurança:
 | `--skip-linuxtoys` | Pula a instalação do LinuxToys. |
 | `--skip-cleanup` | Pula a limpeza final do sistema. |
 | `--skip-plymouth` | Pula a instalação e configuração do Plymouth boot splash. |
+| `--skip-gpu` | Pula etapas relacionadas a drivers de GPU dedicados (NVIDIA/AMD). Útil para notebooks com GPU integrada Intel. |
 | `--verbose` | Exibe saída detalhada durante a execução. |
 | `--version` | Exibe a versão do script. |
 | `--help`, `-h` | Exibe a mensagem de ajuda e sai. |
@@ -356,6 +357,13 @@ sudo chattr -i /etc/resolv.conf
 - **Teste com --dry-run primeiro:** Use `--dry-run` para simular sem fazer mudanças.
 
 ---
+
+## Notas sobre hardware Intel (notebooks sem GPU dedicada)
+
+- O script detecta automaticamente o vendor da GPU (`intel`, `nvidia`, `amd` ou `none`).
+- Para notebooks Intel integrados, é recomendado instalar `intel-ucode` para microcódigo da CPU. O script pede confirmação interativa, ou instala automaticamente caso seja executado com `--yes`.
+- Caso queira pular etapas relacionadas a drivers dedicados (NVIDIA/AMD), use `--skip-gpu`.
+
 
 ## 🤝 Contribuições
 

@@ -10,20 +10,38 @@ set -euo pipefail
 # Version
 VERSION="15.1.0"
 
-# Colors
-VERDE='\033[0;32m'
-VERMELHO='\033[0;31m'
-AMARELO='\033[1;33m'
-AZUL='\033[0;36m'
-NC='\033[0m'
+# Script directory for optional common library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+USING_COMMON_LIB=false
+if [[ -f "${SCRIPT_DIR}/lib/common.sh" ]]; then
+    # shellcheck source=lib/common.sh
+    source "${SCRIPT_DIR}/lib/common.sh"
+    USING_COMMON_LIB=true
+fi
 
-# Desativa cores em ambientes não interativos
-if [ ! -t 1 ]; then
-    VERDE=''
-    VERMELHO=''
-    AMARELO=''
-    AZUL=''
-    NC=''
+# If common lib not available, provide minimal color and logging fallbacks
+if [[ "$USING_COMMON_LIB" != true ]]; then
+    # Colors
+    VERDE='\033[0;32m'
+    VERMELHO='\033[0;31m'
+    AMARELO='\033[1;33m'
+    AZUL='\033[0;36m'
+    NC='\033[0m'
+
+    # Desativa cores em ambientes não interativos
+    if [ ! -t 1 ]; then
+        VERDE=''
+        VERMELHO=''
+        AMARELO=''
+        AZUL=''
+        NC=''
+    fi
+
+    # Logging fallbacks
+    log_info() { echo -e "${AZUL}$*${NC}" >&2; }
+    log_error() { echo -e "${VERMELHO}❌ $*${NC}" >&2; }
+    log_success() { echo -e "${VERDE}✅ $*${NC}" >&2; }
+    log_warn() { echo -e "${AMARELO}⚠️ $*${NC}" >&2; }
 fi
 
 # Configuration
@@ -182,6 +200,16 @@ main() {
     
     # Download the main script
     script_path=$(download_script)
+    # Ensure lib/common.sh is available to the downloaded script when executed from temp dir
+    mkdir -p "$TEMP_DIR/lib"
+    CURL_OPTS=(--connect-timeout 8 --retry 3 --max-time 60 -fsSL)
+    lib_url="${GITHUB_RAW_URL}/lib/common.sh"
+    if curl "${CURL_OPTS[@]}" -o "$TEMP_DIR/lib/common.sh" "$lib_url" 2>/dev/null; then
+        chmod 644 "$TEMP_DIR/lib/common.sh" || true
+        log_success "lib/common.sh baixado e disponível para o instalador"
+    else
+        log_warn "Não foi possível baixar lib/common.sh; o instalador continuará sem ele"
+    fi
     
     # Try to download remove script
     log_info "📦 Preparando ferramentas de desinstalação..."

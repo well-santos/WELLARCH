@@ -49,25 +49,27 @@ VERSION="${WELLARCH_VERSION:-15.1.0}"
 LOGFILE="${HOME}/.cache/wellarch/wellarch-remove.log"
 mkdir -p "$(dirname "$LOGFILE")"
 
-# Logging
-log_to_file() {
-    echo "$(date '+%Y-%m-%dT%H:%M:%S%z') $*" >> "$LOGFILE"
-}
+if [[ "$USING_COMMON_LIB" != true ]]; then
+    # Logging (fallbacks when common lib isn't available)
+    log_to_file() {
+        echo "$(date '+%Y-%m-%dT%H:%M:%S%z') $*" >> "$LOGFILE"
+    }
 
-log_info() {
-    echo -e "${AZUL}$*${NC}"
-    log_to_file "[INFO] $*"
-}
+    log_info() {
+        echo -e "${AZUL}$*${NC}"
+        log_to_file "[INFO] $*"
+    }
 
-log_success() {
-    echo -e "${VERDE}✓ $*${NC}"
-    log_to_file "[SUCCESS] $*"
-}
+    log_success() {
+        echo -e "${VERDE}✓ $*${NC}"
+        log_to_file "[SUCCESS] $*"
+    }
 
-log_warn() {
-    echo -e "${AMARELO}⚠️ $*${NC}"
-    log_to_file "[WARN] $*"
-}
+    log_warn() {
+        echo -e "${AMARELO}⚠️ $*${NC}"
+        log_to_file "[WARN] $*"
+    }
+fi
 
 # ==============================================================================
 # VERIFICAÇÕES INICIAIS

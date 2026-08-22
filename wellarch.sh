@@ -492,6 +492,7 @@ SKIP_DNS=false
 SKIP_LINUXTOYS=false
 SKIP_CLEANUP=false
 SKIP_PLYMOUTH=false
+SKIP_GPU=false
 RESTART_SYSTEM=false
 SAVE_CONFIG=false
 CONFIG_FILE=""
@@ -627,6 +628,10 @@ while [ $# -gt 0 ]; do
 		;;
 	--skip-plymouth)
 		SKIP_PLYMOUTH=true
+		shift
+		;;
+	--skip-gpu)
+		SKIP_GPU=true
 		shift
 		;;
 	--post-check)
@@ -921,10 +926,39 @@ log_to_file "Configurações: AUR=${AUR_HELPER} PAMAC=${PAMAC_PKG} DNS=${DNS_PRO
 echo ""
 echo -e "${AMARELO}🚀 Iniciando WELLARCH v${VERSION}...${NC}"
 
+# Detecta GPU/CPU e prepara recomendações específicas para Intel
+GPU_VENDOR="unknown"
+if declare -f detect_gpu >/dev/null 2>&1; then
+	GPU_VENDOR=$(detect_gpu || true)
+fi
+echo -e "${AZUL}🔍 GPU detectada: ${VERDE}${GPU_VENDOR}${NC}"
+
+# Função para instalar intel-ucode quando CPU for Intel (recomendada para notebooks Intel)
+ensure_intel_microcode() {
+	if declare -f is_intel_cpu >/dev/null 2>&1 && is_intel_cpu; then
+		if ! is_pkg_installed intel-ucode >/dev/null 2>&1; then
+			echo -e "${AMARELO}ℹ️ CPU Intel detectada. Recomendado instalar 'intel-ucode'.${NC}"
+			if [[ "${ASSUME_YES}" == "true" || "${DRY_RUN}" == "true" ]]; then
+				install_pkg_preferred "Intel microcode" intel-ucode || true
+			else
+				read -r -p "Instalar intel-ucode agora? (y/n): " ans_micro
+				if [[ "${ans_micro}" =~ ^[yY]$ ]]; then
+					install_pkg_preferred "Intel microcode" intel-ucode || true
+				else
+					echo "Pulando instalação de intel-ucode. Lembre-se de instalar manualmente se necessário."
+				fi
+			fi
+		fi
+	fi
+}
+
 validate_environment
 
 # Toolchain para builds do AUR
 ensure_base_devel
+
+# Se aplicável, recomenda/instala intel-ucode em CPUs Intel
+ensure_intel_microcode || true
 
 # Mantém sudo vivo (background) e guarda PID para cleanup
 if [[ "${DRY_RUN:-false}" != true ]]; then

@@ -543,3 +543,45 @@ reset_progress() {
 set_total_steps() {
     TOTAL_STEPS="$1"
 }
+
+# Detecta GPU presente no sistema. Retorna: intel|nvidia|amd|none|unknown
+detect_gpu() {
+    # Prefer lspci quando disponível
+    local out=""
+    if command -v lspci >/dev/null 2>&1; then
+        out=$(lspci -nnk 2>/dev/null | tr '[:upper:]' '[:lower:]')
+    elif command -v lshw >/dev/null 2>&1; then
+        out=$(lshw -C display 2>/dev/null | tr '[:upper:]' '[:lower:]')
+    else
+        echo "unknown"
+        return 0
+    fi
+
+    if echo "$out" | grep -q "nvidia"; then
+        echo "nvidia"
+        return 0
+    fi
+    if echo "$out" | grep -Eiq "amd|advanced micro devices|radeon|amdgpu"; then
+        echo "amd"
+        return 0
+    fi
+    if echo "$out" | grep -q "intel"; then
+        echo "intel"
+        return 0
+    fi
+
+    # No VGA/3D device found
+    if [[ -z "$out" ]]; then
+        echo "none"
+    else
+        echo "unknown"
+    fi
+}
+
+# Detecta se a CPU é Intel (útil para recomendar pacotes como intel-ucode)
+is_intel_cpu() {
+    if grep -qi "GenuineIntel" /proc/cpuinfo 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
