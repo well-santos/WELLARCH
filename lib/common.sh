@@ -357,10 +357,14 @@ EOF
 }
 
 # ==============================================================================
-# BACKUP AND RESTORE
+# BACKUP, TEMP DIRS AND RESTORE
 # ==============================================================================
 
 declare -a BACKUP_FILES=()
+
+# Array with temporary directories created during runtime. Tests and scripts
+# append to this array and call `cleanup_temp_dirs` to remove them.
+declare -a TMP_DIRS=()
 
 backup_file() {
     local src="$1"
@@ -398,11 +402,9 @@ restore_backups() {
     done
 }
 
-# ==============================================================================
+# ===========================================================================
 # TEMPORARY DIRECTORY MANAGEMENT
-# ==============================================================================
-
-declare -a TMP_DIRS=()
+# ===========================================================================
 
 create_temp_dir() {
     local tmpdir
@@ -412,9 +414,11 @@ create_temp_dir() {
 }
 
 cleanup_temp_dirs() {
+    local d
     for d in "${TMP_DIRS[@]:-}"; do
         if [[ -n "$d" && "$d" == /* && -d "$d" ]]; then
             rm -rf -- "$d" 2>/dev/null || true
+            log_debug "Removed temp dir: $d"
         fi
     done
     TMP_DIRS=()

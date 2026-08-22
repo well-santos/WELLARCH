@@ -34,9 +34,13 @@ else
 fi
 
 # Verify Bash version (requires 4.0+)
-if ((BASH_VERSINFO[0] < 4)); then
-    echo -e "${VERMELHO:-}❌ ERRO: Requer Bash 4.0 ou superior. Versão atual: ${BASH_VERSION}${NC:-}" >&2
-    exit 1
+if declare -f check_bash_version >/dev/null 2>&1; then
+	check_bash_version 4 0
+else
+	if ((BASH_VERSINFO[0] < 4)); then
+		echo -e "${VERMELHO:-}❌ ERRO: Requer Bash 4.0 ou superior. Versão atual: ${BASH_VERSION}${NC:-}" >&2
+		exit 1
+	fi
 fi
 
 # Log directory and file
@@ -100,8 +104,9 @@ if [[ "$USING_COMMON_LIB" != true ]]; then
 fi
 
 # ==============================================================================
-# FUNÇÕES AUXILIARES
+# FUNÇÕES AUXILIARES (definidas apenas se `lib/common.sh` não estiver disponível)
 # ==============================================================================
+if [[ "$USING_COMMON_LIB" != true ]]; then
 is_installed() {
 	command -v "$1" &>/dev/null || return 1
 }
@@ -127,7 +132,6 @@ is_chaotic_pkg() {
 }
 
 SKIPPED_STEPS=()
-BACKUP_FILES=()
 
 add_skipped_step() {
 	local step="$1"
@@ -143,6 +147,7 @@ backup_file() {
 		else
 			try_cmd sudo cp "$src" "$bak" || true
 		fi
+		# When lib/common.sh is absent, keep track locally
 		BACKUP_FILES+=("$src|$bak")
 	fi
 }
@@ -165,6 +170,7 @@ restore_backups() {
 		fi
 	done
 }
+fi
 
 install_pkg_preferred() {
 	local display_name="$1"
@@ -237,18 +243,28 @@ parar_com_erro() {
 
 # Cleanup/Trap
 SUDO_KEEPALIVE_PID=""
-TMP_DIRS=()
 cleanup() {
 	# kill sudo keepalive if running
 	if [[ -n "$SUDO_KEEPALIVE_PID" ]]; then
 		kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
 	fi
-	# remove temporary dirs safely
-	for d in "${TMP_DIRS[@]:-}"; do
-		if [[ -n "$d" && "$d" = /* && -e "$d" ]]; then
-			rm -rf -- "$d" || true
+	# delegate temp dirs cleanup to shared library function if available
+	if declare -f cleanup_temp_dirs >/dev/null 2>&1; then
+		cleanup_temp_dirs
+	else
+		# fallback: try to remove TMP_DIRS if present
+		if [[ ${#TMP_DIRS[@]:-0} -gt 0 ]]; then
+			for d in "${TMP_DIRS[@]:-}"; do
+				if [[ -n "$d" && "$d" = /* && -e "$d" ]]; then
+					rm -rf -- "$d" || true
+				fi
+			done
 		fi
-	done
+	fi
+	# restore backups if function available
+	if declare -f restore_backups >/dev/null 2>&1; then
+		restore_backups
+	fi
 }
 trap 'on_err ${LINENO} $?' ERR
 trap cleanup EXIT INT TERM
