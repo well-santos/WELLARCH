@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: lint format check test install-tools help
+.PHONY: lint format check test test-dry-run install-tools help dry-run dry-run-verbose
 
 # Default target
 .DEFAULT_GOAL := help
@@ -12,13 +12,14 @@ help:
 	@echo "  make format        - Format scripts with shfmt"
 	@echo "  make check         - Run syntax check and lint"
 	@echo "  make test          - Run test suite"
+	@echo "  make test-dry-run  - Test command guards in dry-run mode"
 	@echo "  make install-tools - Install shellcheck and shfmt"
 	@echo "  make all           - Run check, test, and lint"
 	@echo ""
 
 lint:
 	@echo "Running shellcheck..."
-	@shellcheck -x wellarch.sh install.sh wellarch-remove.sh lib/common.sh
+	@shellcheck -x wellarch.sh install.sh wellarch-remove.sh lib/common.sh tests/test_functions.sh tests/test_dry_run.sh
 	@echo "Running shfmt check..."
 	@shfmt -l -d wellarch.sh install.sh wellarch-remove.sh lib/common.sh || true
 	@echo "✓ Lint complete"
@@ -40,7 +41,12 @@ test:
 	@echo "Running test suite..."
 	@chmod +x tests/test_functions.sh
 	@bash tests/test_functions.sh
+	@$(MAKE) test-dry-run
 	@echo "✓ Tests complete"
+
+test-dry-run:
+	@chmod +x tests/test_dry_run.sh
+	@bash tests/test_dry_run.sh
 
 install-tools:
 	@echo "Installing shellcheck and shfmt..."

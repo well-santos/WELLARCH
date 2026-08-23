@@ -12,7 +12,7 @@ O **WELLARCH** é um script de shell robusto projetado para transformar uma inst
 - **Arquivo de Configuração:** Suporte a arquivo de configuração (`--config` e `--save-config`)
 - **Flag --uninstall:** Desinstalar diretamente via `./wellarch.sh --uninstall`
 - **Verificação de Bash:** Valida versão mínima do Bash (4.0+)
-- **Plymouth Implementado:** Instalação completa do Plymouth com configuração de boot
+- **Boot preservado:** O instalador não altera configurações do boot.
 - **Exit Code Correto:** Retorna código 1 quando há falhas
 - **Testes Automatizados:** Suite de testes em `tests/test_functions.sh`
 - **Makefile Melhorado:** Novos targets: `test`, `help`, `dry-run`
@@ -31,7 +31,6 @@ O **WELLARCH** é um script de shell robusto projetado para transformar uma inst
 - **Downloads Mais Resilientes:** tentativas e timeouts configuráveis para pacman/flatpak/curl
 - **Resumo de Etapas Puladas:** relatório final mostra quais etapas foram ignoradas
 - **Backups/Restore Automático:** backups críticos e restauração em caso de erro fatal
-- **Plymouth + Boot Splash:** instalação do Plymouth, tema padrão e ajuste do systemd-boot para splash/quiet
 - **Cronômetro:** Mostra tempo total de execução ao final
 - **Notificação Desktop:** Alerta via notify-send quando a instalação termina
 - **Versionamento Semântico:** Adotado formato MAJOR.MINOR.PATCH
@@ -45,9 +44,8 @@ O **WELLARCH** é um script de shell robusto projetado para transformar uma inst
 - **Pamac:** Escolha entre Pamac-all (GUI completa) ou Pamac-aur (CLI).
 - **Configuração de DNS:** Escolha entre Cloudflare, Quad9, Google ou AdGuard via NetworkManager.
 - **Flatpak & Flathub:** Configuração completa do ambiente Flatpak e repositório Flathub.
-- **Apps e Temas Essenciais:** Instala cursor Fluent, Papirus, GDM Settings, GNOME Themes Extra e Visual Studio Code.
-- **Configuração Visual e Shell:** Aplica Papirus Dark, ícones legados Adwaita Dark e configura Oh My Zsh (tema duellj).
-- **Plymouth & Boot Splash:** Instala Plymouth, define tema e habilita animação de boot (systemd-boot com timeout 0 e opções quiet/splash).
+- **Apps e Temas Essenciais:** Instala cursor Fluent, GDM Settings, GNOME Themes Extra e Visual Studio Code.
+- **Configuração do Shell:** Configura Oh My Zsh com o tema duellj, sem alterar ícones do sistema.
 - **LinuxToys:** Integração com ferramentas essenciais (download seguro com confirmação).
 - **Atualização do Sistema:** Atualiza todos os pacotes com `pacman -Syu` antes de instalar novos.
 - **Limpeza do Sistema:**
@@ -169,7 +167,6 @@ Antes da execução, o script apresenta um **menu interativo** com 5 perguntas:
 Escolha quais apps deseja instalar:
 - ZapZap (WhatsApp)
 - Telegram
-- ProtonPlus
 - Equibop
 - Easy Effects
 - Ignition
@@ -231,7 +228,6 @@ O script também suporta argumentos para maior controle e segurança:
 | `--skip-dns` | Pula a configuração de DNS. |
 | `--skip-linuxtoys` | Pula a instalação do LinuxToys. |
 | `--skip-cleanup` | Pula a limpeza final do sistema. |
-| `--skip-plymouth` | Pula a instalação e configuração do Plymouth boot splash. |
 | `--skip-gpu` | Pula etapas relacionadas a drivers de GPU dedicados (NVIDIA/AMD). Útil para notebooks com GPU integrada Intel. |
 | `--verbose` | Exibe saída detalhada durante a execução. |
 | `--version` | Exibe a versão do script. |

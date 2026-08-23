@@ -341,8 +341,6 @@ SKIP_EXTRAS="${SKIP_EXTRAS:-false}"
 SKIP_DNS="${SKIP_DNS:-false}"
 SKIP_LINUXTOYS="${SKIP_LINUXTOYS:-false}"
 SKIP_CLEANUP="${SKIP_CLEANUP:-false}"
-SKIP_PLYMOUTH="${SKIP_PLYMOUTH:-false}"
-
 # Restart system after installation
 RESTART_SYSTEM="${RESTART_SYSTEM:-false}"
 
@@ -500,6 +498,11 @@ run_with_retry() {
 
 # Run command as sudo
 sudo_run() {
+    if [[ "${DRY_RUN:-false}" == true ]]; then
+        echo "(dry-run) CMD: sudo $*"
+        return 0
+    fi
+
     if [[ $EUID -eq 0 ]]; then
         "$@"
     else
@@ -511,6 +514,11 @@ sudo_run() {
 sudo_run_retry() {
     local label="$1"
     shift
+    if [[ "${DRY_RUN:-false}" == true ]]; then
+        echo "(dry-run) $label: sudo $*"
+        return 0
+    fi
+
     if [[ $EUID -eq 0 ]]; then
         run_with_retry "$label" "$@"
     else
@@ -523,7 +531,7 @@ sudo_run_retry() {
 # ==============================================================================
 
 CURRENT_STEP=0
-TOTAL_STEPS=12
+TOTAL_STEPS=15
 
 show_progress() {
     local step_name="$1"

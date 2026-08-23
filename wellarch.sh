@@ -10,10 +10,13 @@ set -o errtrace
 IFS=$'\n\t'
 
 # Script directory for sourcing libraries
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR=""
+if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+	SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+fi
 
 # Source common library if available, otherwise use inline definitions
-if [[ -f "${SCRIPT_DIR}/lib/common.sh" ]]; then
+if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/lib/common.sh" ]]; then
     # shellcheck source=lib/common.sh
     source "${SCRIPT_DIR}/lib/common.sh"
     USING_COMMON_LIB=true
@@ -68,7 +71,7 @@ SKIP_RESOLV_CONF=false
 POST_CHECK=false
 
 # Contadores de progresso
-TOTAL_STEPS=13
+TOTAL_STEPS=15
 CURRENT_STEP=0
 
 # Função para mostrar progresso
@@ -457,6 +460,11 @@ prompt_choice() {
 
 # Garante toolchain básica antes de compilar pacotes do AUR
 ensure_base_devel() {
+	if [[ "${DRY_RUN:-false}" == true ]]; then
+		echo "(dry-run) verificaria dependências de compilação"
+		return 0
+	fi
+
 	if ! pacman -Qg base-devel >/dev/null 2>&1; then
 		echo "🔧 Instalando base-devel (dependências de compilação)..."
 		sudo_run_retry "Instalação de base-devel" pacman -S --needed base-devel --noconfirm
@@ -491,7 +499,6 @@ SKIP_EXTRAS=false
 SKIP_DNS=false
 SKIP_LINUXTOYS=false
 SKIP_CLEANUP=false
-SKIP_PLYMOUTH=false
 SKIP_GPU=false
 RESTART_SYSTEM=false
 SAVE_CONFIG=false
@@ -626,10 +633,6 @@ while [ $# -gt 0 ]; do
 		SKIP_CLEANUP=true
 		shift
 		;;
-	--skip-plymouth)
-		SKIP_PLYMOUTH=true
-		shift
-		;;
 	--skip-gpu)
 		SKIP_GPU=true
 		shift
@@ -672,7 +675,6 @@ ${AMARELO}OPÇÕES DE SKIP (pular etapas):${NC}
   --skip-dns             Pula configuração de DNS
   --skip-linuxtoys       Pula instalação do LinuxToys
   --skip-cleanup         Pula limpeza do sistema
-  --skip-plymouth        Pula instalação do Plymouth
 
 ${AMARELO}EXEMPLOS:${NC}
   # Executar normalmente:
@@ -741,9 +743,8 @@ echo -e "   5. Gerenciador Pamac"
 echo -e "   6. Apps e Temas Essenciais"
 echo -e "   7. LinuxToys"
 echo -e "   8. Configuração de DNS"
-echo -e "   9. Configuração Visual e Shell"
-echo -e "  10. Plymouth Boot Splash"
-echo -e "  11. Limpeza do Sistema"
+echo -e "   9. Configuração do Shell"
+echo -e "  10. Limpeza do Sistema"
 echo -e "-------------------------------------------------------------"
 echo ""
 
@@ -842,7 +843,6 @@ echo -e "${AMARELO}4. Selecione os aplicativos Flatpak a instalar:${NC}"
 AVAILABLE_APPS=(
 	"com.rtosta.zapzap:ZapZap (WhatsApp)"
 	"org.telegram.desktop:Telegram"
-	"com.vysp3r.ProtonPlus:ProtonPlus"
 	"org.equicord.equibop:Equibop"
 	"com.github.wwmm.easyeffects:Easy Effects"
 	"io.github.flattool.Ignition:Ignition"
@@ -1226,19 +1226,33 @@ else
 fi
 
 # ---------------------------------------------------------
-# 8. APPS E TEMAS ESSENCIAIS
+# 8. TEMAS, APLICATIVOS E FERRAMENTAS
 # ---------------------------------------------------------
-show_progress "Apps e Temas Essenciais"
+show_progress "Temas, Aplicativos e Ferramentas"
+
+install_theme_packages() {
+	show_progress "Temas"
+	install_pkg_preferred "Cursor Fluent" "cursor-fluent" "fluent-cursor-theme"
+	install_pkg_preferred "GNOME Themes Extra" "gnome-themes-extra"
+}
+
+install_desktop_apps() {
+	show_progress "Aplicativos"
+	install_pkg_preferred "GDM Settings" "gdm-settings"
+}
+
+install_development_tools() {
+	show_progress "Ferramentas de Desenvolvimento"
+	install_pkg_preferred "Visual Studio Code" "code" "visual-studio-code-bin"
+}
 
 if [[ "$SKIP_EXTRAS" == true ]]; then
 	echo -e "${AMARELO}⏭️  Pulando apps e temas essenciais (--skip-extras)${NC}"
 	add_skipped_step "Apps e Temas Essenciais"
 else
-	install_pkg_preferred "Cursor Fluent" "cursor-fluent" "fluent-cursor-theme"
-	install_pkg_preferred "GNOME Themes Extra" "gnome-themes-extra"
-	install_pkg_preferred "Visual Studio Code" "code" "visual-studio-code-bin"
-	install_pkg_preferred "Papirus Icon Theme" "papirus-icon-theme"
-	install_pkg_preferred "GDM Settings" "gdm-settings"
+	install_theme_packages
+	install_desktop_apps
+	install_development_tools
 fi
 
 # ---------------------------------------------------------
@@ -1255,74 +1269,66 @@ elif [ -f "$MARKER_FILE" ]; then
 	echo "✅ LinuxToys já foi executado. Pulando."
 else
 	echo "🧸 Instalando LinuxToys..."
-	DEPS=(bash git curl wget zenity python python-gobject python-requests gtk3 vte3)
-	if ! sudo_run_retry "Instalação de dependências do LinuxToys" pacman -S --needed "${DEPS[@]}" --noconfirm; then
-		echo -e "${AMARELO}⚠️ Falha ao instalar dependências do LinuxToys.${NC}"
-		FAILED_ITEMS+=("LinuxToys (deps)")
-		return 0
-	fi
-
-	lt_tmp=$(mktemp -d)
-	TMP_DIRS+=("$lt_tmp")
-	lt_script="$lt_tmp/linuxtoys-install.sh"
-	CURL_OPTS=(-fsSL --connect-timeout 10)
-	if [[ "$DOWNLOAD_TIMEOUT" -gt 0 ]]; then
-		CURL_OPTS+=(--max-time "$DOWNLOAD_TIMEOUT")
-	fi
-	if ! run_with_retry "Download do LinuxToys" curl "${CURL_OPTS[@]}" -o "$lt_script" https://linux.toys/install.sh; then
-		echo -e "${VERMELHO}⚠️ Falha ao baixar LinuxToys.${NC}"
-		FAILED_ITEMS+=("LinuxToys")
+	if [[ "${DRY_RUN:-false}" == true ]]; then
+		echo -e "${AMARELO}(dry-run) verificaria dependências e download do LinuxToys${NC}"
 	else
-		echo "Script LinuxToys salvo em: $lt_script"
-		LT_OK=false
-		if [[ -n "${LINUXTOYS_SHA256:-}" ]]; then
-			if echo "${LINUXTOYS_SHA256}  $lt_script" | sha256sum -c --status 2>/dev/null; then
-				echo "   ✅ Checksum do LinuxToys verificado."
-			else
-				echo -e "${VERMELHO}❌ Checksum do LinuxToys não confere. Abortando execução.${NC}"
-				FAILED_ITEMS+=("LinuxToys (checksum)")
-				LT_OK=false
+		DEPS=(bash git curl wget zenity python python-gobject python-requests gtk3 vte3)
+		if ! sudo_run_retry "Instalação de dependências do LinuxToys" pacman -S --needed "${DEPS[@]}" --noconfirm; then
+			echo -e "${AMARELO}⚠️ Falha ao instalar dependências do LinuxToys.${NC}"
+			FAILED_ITEMS+=("LinuxToys (deps)")
+		else
+			lt_tmp=$(mktemp -d)
+			TMP_DIRS+=("$lt_tmp")
+			lt_script="$lt_tmp/linuxtoys-install.sh"
+			CURL_OPTS=(-fsSL --connect-timeout 10)
+			if [[ "$DOWNLOAD_TIMEOUT" -gt 0 ]]; then
+				CURL_OPTS+=(--max-time "$DOWNLOAD_TIMEOUT")
 			fi
-		else
-			echo -e "${AMARELO}⚠️ Sem LINUXTOYS_SHA256 definido; executando sem verificação de integridade.${NC}"
-		fi
 
-		if [[ "${DRY_RUN:-false}" == true ]]; then
-			echo -e "${AMARELO}(dry-run) não executando instalador do LinuxToys${NC}"
-		else
-			if [[ "$LT_OK" == false && -n "${LINUXTOYS_SHA256:-}" ]]; then
-				# checksum falhou; já registrado
-				:
+			if ! run_with_retry "Download do LinuxToys" curl "${CURL_OPTS[@]}" -o "$lt_script" https://linux.toys/install.sh; then
+				echo -e "${VERMELHO}⚠️ Falha ao baixar LinuxToys.${NC}"
+				FAILED_ITEMS+=("LinuxToys")
 			else
+				echo "Script LinuxToys salvo em: $lt_script"
+				LT_OK=false
+				if [[ -n "${LINUXTOYS_SHA256:-}" ]]; then
+					if echo "${LINUXTOYS_SHA256}  $lt_script" | sha256sum -c --status 2>/dev/null; then
+						echo "   ✅ Checksum do LinuxToys verificado."
+					else
+						echo -e "${VERMELHO}❌ Checksum do LinuxToys não confere. Abortando execução.${NC}"
+						FAILED_ITEMS+=("LinuxToys (checksum)")
+					fi
+				else
+					echo -e "${AMARELO}⚠️ Sem LINUXTOYS_SHA256 definido; executando sem verificação de integridade.${NC}"
+				fi
+
 				if [[ "$ASSUME_YES" == true ]]; then
 					if bash "$lt_script"; then
 						LT_OK=true
 					fi
 				else
 					read -r -p "Executar o instalador do LinuxToys agora? (y/n): " anslt
-					if [[ "$anslt" =~ ^[yY]$ ]]; then
-						if bash "$lt_script"; then
-							LT_OK=true
-						fi
-					else
-						echo "Pulando execução do instalador LinuxToys (arquivo baixado)."
+					if [[ "$anslt" =~ ^[yY]$ ]] && bash "$lt_script"; then
+						LT_OK=true
 					fi
 				fi
+
+				if [[ "$LT_OK" == true ]]; then
+					touch "$MARKER_FILE"
+					echo -e "${VERDE}✅ LinuxToys instalado e marcador criado!${NC}"
+					INSTALLED_PACKAGES+=("LinuxToys")
+				else
+					echo -e "${VERMELHO}⚠️ Falha no LinuxToys.${NC}"
+					FAILED_ITEMS+=("LinuxToys")
+				fi
 			fi
-		fi
-		if [ "$LT_OK" = true ]; then
-			touch "$MARKER_FILE"
-			echo -e "${VERDE}✅ LinuxToys instalado e marcador criado!${NC}"
-			INSTALLED_PACKAGES+=("LinuxToys")
-		else
-			echo -e "${VERMELHO}⚠️ Falha no LinuxToys.${NC}"
-			FAILED_ITEMS+=("LinuxToys")
+
+			if [[ "$lt_tmp" = /* ]] && [[ -d "$lt_tmp" ]]; then
+				rm -rf -- "$lt_tmp"
+			fi
+			TMP_DIRS=()
 		fi
 	fi
-	if [[ "$lt_tmp" = /* ]] && [ -d "$lt_tmp" ]; then
-		rm -rf -- "$lt_tmp"
-	fi
-	TMP_DIRS=()
 fi
 
 # ---------------------------------------------------------
@@ -1420,6 +1426,10 @@ EOF
 		else
 			for CONN in "${ACTIVE_CONNS[@]}"; do
 				echo "   🔧 Aplicando DNS na conexão: $CONN"
+				if [[ "${DRY_RUN:-false}" == true ]]; then
+					echo "   (dry-run) não modificando a conexão $CONN"
+					continue
+				fi
 				nmcli connection modify "$CONN" ipv4.ignore-auto-dns yes ipv6.ignore-auto-dns yes 2>/dev/null || true
 				if [[ ${#IPV4_SERVERS[@]} -gt 0 ]]; then
 					nmcli connection modify "$CONN" ipv4.dns "${IPV4_SERVERS[*]}" 2>/dev/null || true
@@ -1444,39 +1454,9 @@ EOF
 setup_dns
 
 # ---------------------------------------------------------
-# 11. CONFIGURAÇÃO VISUAL E SHELL
+# 11. CONFIGURAÇÃO DO SHELL
 # ---------------------------------------------------------
-show_progress "Configuração Visual e Shell"
-
-configure_themes() {
-	if [[ "${DRY_RUN:-false}" == true ]]; then
-		echo -e "${AMARELO}(dry-run) aplicaria temas de ícones${NC}"
-		return 0
-	fi
-
-	if command -v gsettings >/dev/null 2>&1; then
-		if gsettings writable org.gnome.desktop.interface icon-theme >/dev/null 2>&1; then
-			gsettings set org.gnome.desktop.interface icon-theme "Papirus-Dark" || true
-			echo -e "${VERDE}✅ Ícones definidos para Papirus-Dark${NC}"
-		fi
-	else
-		echo -e "${AMARELO}⚠️ gsettings não encontrado; ícones Papirus-Dark não aplicados.${NC}"
-	fi
-
-	legacy_file="$HOME/.gtkrc-2.0"
-	if [[ -f "$legacy_file" ]]; then
-		if grep -q '^gtk-icon-theme-name=' "$legacy_file"; then
-			sed -i 's/^gtk-icon-theme-name=.*/gtk-icon-theme-name="Adwaita-dark"/' "$legacy_file"
-		else
-			echo 'gtk-icon-theme-name="Adwaita-dark"' >> "$legacy_file"
-		fi
-	else
-		{
-			echo "# Configuração gerada pelo WELLARCH"
-			echo 'gtk-icon-theme-name="Adwaita-dark"'
-		} > "$legacy_file"
-	fi
-}
+show_progress "Configuração do Shell"
 
 configure_oh_my_zsh() {
 	install_pkg_preferred "Zsh" "zsh"
@@ -1530,138 +1510,13 @@ configure_oh_my_zsh() {
 	fi
 }
 
-configure_themes
 configure_oh_my_zsh
 
 # Restaurar IFS original
 IFS="$ORIGINAL_IFS"
 
 # ---------------------------------------------------------
-# 12. PLYMOUTH BOOT SPLASH
-# ---------------------------------------------------------
-setup_plymouth() {
-	show_progress "Plymouth Boot Splash"
-	
-	if [[ "$SKIP_PLYMOUTH" == true ]]; then
-		echo -e "${AMARELO}⏭️  Pulando Plymouth (--skip-plymouth)${NC}"
-		add_skipped_step "Plymouth Boot Splash"
-		return 0
-	fi
-	
-	if [[ "${DRY_RUN:-false}" == true ]]; then
-		echo -e "${AMARELO}(dry-run) instalaria Plymouth e configuraria boot splash${NC}"
-		return 0
-	fi
-	
-	echo "🎨 Configurando Plymouth Boot Splash..."
-	
-	# Instalar Plymouth
-	if ! is_pkg_installed plymouth; then
-		echo "   📦 Instalando Plymouth..."
-		if ! sudo_run_retry "Instalação do Plymouth" pacman -S --needed plymouth --noconfirm; then
-			echo -e "${AMARELO}⚠️ Falha ao instalar Plymouth.${NC}"
-			FAILED_ITEMS+=("Plymouth")
-			return 0
-		fi
-		INSTALLED_PACKAGES+=("Plymouth")
-	else
-		echo "   ✅ Plymouth já está instalado."
-	fi
-	
-	# Configurar mkinitcpio para incluir plymouth
-	local MKINITCPIO_CONF="/etc/mkinitcpio.conf"
-	if [[ -f "$MKINITCPIO_CONF" ]]; then
-		backup_file "$MKINITCPIO_CONF" "${MKINITCPIO_CONF}.wellarch.bak"
-		
-		# Adicionar plymouth aos hooks se não existir
-		if ! grep -q "plymouth" "$MKINITCPIO_CONF"; then
-			echo "   🔧 Adicionando Plymouth aos hooks do mkinitcpio..."
-			# Inserir plymouth após base e udev
-			sudo sed -i 's/\(HOOKS=.*base\) \(udev\)/\1 \2 plymouth/' "$MKINITCPIO_CONF" 2>/dev/null || true
-			
-			# Regenerar initramfs
-			echo "   🔄 Regenerando initramfs..."
-			if sudo_run mkinitcpio -P; then
-				echo -e "   ${VERDE}✅ Initramfs regenerado com Plymouth${NC}"
-			else
-				echo -e "   ${AMARELO}⚠️ Aviso ao regenerar initramfs${NC}"
-			fi
-		else
-			echo "   ✅ Plymouth já está nos hooks do mkinitcpio."
-		fi
-	fi
-	
-	# Configurar tema do Plymouth
-	local PLYMOUTH_THEME="bgrt"
-	local available_themes
-	available_themes=$(plymouth-set-default-theme --list 2>/dev/null || true)
-	
-	if [[ -n "$available_themes" ]]; then
-		# Preferência de temas: bgrt > spinner > fade-in > text
-		for theme in bgrt spinner fade-in text; do
-			if echo "$available_themes" | grep -q "^${theme}$"; then
-				PLYMOUTH_THEME="$theme"
-				break
-			fi
-		done
-		
-		echo "   🎨 Definindo tema Plymouth: $PLYMOUTH_THEME"
-		if sudo plymouth-set-default-theme "$PLYMOUTH_THEME" 2>/dev/null; then
-			echo -e "   ${VERDE}✅ Tema Plymouth definido: $PLYMOUTH_THEME${NC}"
-		fi
-	fi
-	
-	# Configurar bootloader (systemd-boot)
-	local LOADER_CONF="/boot/loader/loader.conf"
-	if [[ -f "$LOADER_CONF" ]]; then
-		backup_file "$LOADER_CONF" "${LOADER_CONF}.wellarch.bak"
-		
-		# Definir timeout para 0 (boot instantâneo)
-		if ! grep -q "^timeout 0" "$LOADER_CONF"; then
-			echo "   ⏱️  Configurando timeout do bootloader para 0..."
-			sudo sed -i 's/^timeout.*/timeout 0/' "$LOADER_CONF" 2>/dev/null || \
-				echo "timeout 0" | sudo tee -a "$LOADER_CONF" >/dev/null
-		fi
-	fi
-	
-	# Adicionar quiet splash às entradas do bootloader
-	local LOADER_ENTRIES="/boot/loader/entries"
-	if [[ -d "$LOADER_ENTRIES" ]]; then
-		echo "   🔧 Adicionando opções quiet splash às entradas do bootloader..."
-		for entry in "$LOADER_ENTRIES"/*.conf; do
-			if [[ -f "$entry" ]]; then
-				if ! grep -q "quiet splash" "$entry"; then
-					sudo sed -i '/^options/ s/$/ quiet splash/' "$entry" 2>/dev/null || true
-				fi
-			fi
-		done
-		echo -e "   ${VERDE}✅ Opções de boot atualizadas${NC}"
-	fi
-	
-	# GRUB (alternativa)
-	local GRUB_DEFAULT="/etc/default/grub"
-	if [[ -f "$GRUB_DEFAULT" ]]; then
-		backup_file "$GRUB_DEFAULT" "${GRUB_DEFAULT}.wellarch.bak"
-		
-		if ! grep -q "quiet splash" "$GRUB_DEFAULT"; then
-			echo "   🔧 Configurando GRUB para quiet splash..."
-			sudo sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="\([^"]*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 quiet splash"/' "$GRUB_DEFAULT" 2>/dev/null || true
-			
-			if is_installed grub-mkconfig; then
-				echo "   🔄 Regenerando configuração do GRUB..."
-				sudo grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null || true
-			fi
-		fi
-	fi
-	
-	echo -e "${VERDE}✅ Plymouth Boot Splash configurado!${NC}"
-	INSTALLED_PACKAGES+=("Plymouth Boot Splash")
-}
-
-setup_plymouth
-
-# ---------------------------------------------------------
-# 13. LIMPEZA
+# 12. LIMPEZA
 # ---------------------------------------------------------
 show_progress "Limpeza do Sistema"
 
@@ -1720,7 +1575,11 @@ fi
 
 echo "   📱 Limpando Flatpaks..."
 if is_installed flatpak; then
-	flatpak uninstall --unused -y >/dev/null 2>&1 || true
+	if [[ "$DRY_RUN" == true ]]; then
+		echo "   (dry-run) pulando limpeza de runtimes Flatpak"
+	else
+		flatpak uninstall --unused -y >/dev/null 2>&1 || true
+	fi
 else
 	echo "   ℹ️  Flatpak não instalado; pulando limpeza."
 fi
@@ -1858,7 +1717,6 @@ SKIP_EXTRAS="${SKIP_EXTRAS}"
 SKIP_DNS="${SKIP_DNS}"
 SKIP_LINUXTOYS="${SKIP_LINUXTOYS}"
 SKIP_CLEANUP="${SKIP_CLEANUP}"
-SKIP_PLYMOUTH="${SKIP_PLYMOUTH}"
 
 # Other options
 FORCE_RESOLV_LOCK="${FORCE_RESOLV_LOCK}"

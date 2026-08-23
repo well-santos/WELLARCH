@@ -120,8 +120,6 @@ base-devel
    (dry-run) pulando instalação de com.rtosta.zapzap
    ⬇️  Instalando org.telegram.desktop...
    (dry-run) pulando instalação de org.telegram.desktop
-   ⬇️  Instalando com.vysp3r.ProtonPlus...
-   (dry-run) pulando instalação de com.vysp3r.ProtonPlus
    ⬇️  Instalando org.equicord.equibop...
    (dry-run) pulando instalação de org.equicord.equibop
    ⬇️  Instalando com.github.wwmm.easyeffects...
@@ -146,7 +144,6 @@ base-devel
 ✅ Cursor Fluent (fluent-cursor-theme) já está instalado. Pulando.
 ✅ GNOME Themes Extra (gnome-themes-extra) já está instalado. Pulando.
 ✅ Visual Studio Code (code) já está instalado. Pulando.
-✅ Papirus Icon Theme (papirus-icon-theme) já está instalado. Pulando.
 ✅ GDM Settings (gdm-settings) já está instalado. Pulando.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

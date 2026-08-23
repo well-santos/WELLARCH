@@ -41,7 +41,7 @@ SKIP_FLATPAK="false"
 # Skip Pamac installation
 SKIP_PAMAC="false"
 
-# Skip extra apps and themes (VS Code, Papirus, etc.)
+# Skip extra apps and themes (VS Code, cursor theme, etc.)
 SKIP_EXTRAS="false"
 
 # Skip DNS configuration
@@ -52,9 +52,6 @@ SKIP_LINUXTOYS="false"
 
 # Skip system cleanup at the end
 SKIP_CLEANUP="false"
-
-# Skip Plymouth boot splash configuration
-SKIP_PLYMOUTH="false"
 
 # ==============================================================================
 # Other Options

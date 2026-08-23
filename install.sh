@@ -11,9 +11,12 @@ set -euo pipefail
 VERSION="15.1.0"
 
 # Script directory for optional common library
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR=""
+if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+    SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+fi
 USING_COMMON_LIB=false
-if [[ -f "${SCRIPT_DIR}/lib/common.sh" ]]; then
+if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/lib/common.sh" ]]; then
     # shellcheck source=lib/common.sh
     source "${SCRIPT_DIR}/lib/common.sh"
     USING_COMMON_LIB=true

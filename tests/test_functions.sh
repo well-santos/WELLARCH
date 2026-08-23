@@ -221,6 +221,35 @@ test_script_syntax() {
     assert_true 'bash -n "${SCRIPT_DIR}/lib/common.sh"' "lib/common.sh has valid syntax"
 }
 
+test_removed_features() {
+    run_test "Removed optional features"
+
+    assert_false 'grep -Eq "ProtonPlus|protonplus|Papirus|papirus|Plymouth|plymouth|quiet splash|setup_plymouth|SKIP_PLYMOUTH" "${SCRIPT_DIR}/wellarch.sh"' \
+        "Main installer does not install icons or modify boot animation"
+}
+
+test_stdin_execution() {
+    run_test "Execution from stdin"
+
+    if head -n 18 "${SCRIPT_DIR}/install.sh" | env -u BASH_SOURCE bash >/dev/null 2>&1; then
+        ((TESTS_PASSED++)) || true
+        echo -e "  ${GREEN}✓${NC} install.sh accepts stdin execution"
+    else
+        ((TESTS_FAILED++)) || true
+        echo -e "  ${RED}✗${NC} install.sh accepts stdin execution"
+    fi
+    ((TESTS_RUN++)) || true
+
+    if head -n 18 "${SCRIPT_DIR}/wellarch.sh" | env -u BASH_SOURCE bash >/dev/null 2>&1; then
+        ((TESTS_PASSED++)) || true
+        echo -e "  ${GREEN}✓${NC} wellarch.sh accepts stdin execution"
+    else
+        ((TESTS_FAILED++)) || true
+        echo -e "  ${RED}✗${NC} wellarch.sh accepts stdin execution"
+    fi
+    ((TESTS_RUN++)) || true
+}
+
 # ==============================================================================
 # MAIN
 # ==============================================================================
@@ -242,6 +271,8 @@ main() {
     test_prompt_choice_default
     test_bash_version_check
     test_script_syntax
+    test_removed_features
+    test_stdin_execution
     
     # Summary
     echo ""
