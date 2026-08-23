@@ -499,7 +499,6 @@ run_with_retry() {
 # Run command as sudo
 sudo_run() {
     if [[ "${DRY_RUN:-false}" == true ]]; then
-        echo "(dry-run) CMD: sudo $*"
         return 0
     fi
 
@@ -515,7 +514,6 @@ sudo_run_retry() {
     local label="$1"
     shift
     if [[ "${DRY_RUN:-false}" == true ]]; then
-        echo "(dry-run) $label: sudo $*"
         return 0
     fi
 
@@ -536,11 +534,17 @@ TOTAL_STEPS=15
 show_progress() {
     local step_name="$1"
     ((CURRENT_STEP++))
-    
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${PURPLE}[${CURRENT_STEP}/${TOTAL_STEPS}]${NC} ${GREEN}${step_name}${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    local bar_width=30
+    local completed=$((CURRENT_STEP * bar_width / TOTAL_STEPS))
+    local remaining=$((bar_width - completed))
+    local bar=""
+    local empty=""
+    printf -v bar '%*s' "$completed" ''
+    printf -v empty '%*s' "$remaining" ''
+    bar=${bar// /#}
+    empty=${empty// /-}
+    printf "${PURPLE}[%s%s]${NC} ${GREEN}%02d/%02d %s${NC}\n" \
+        "$bar" "$empty" "$CURRENT_STEP" "$TOTAL_STEPS" "$step_name"
     log_to_file "[${CURRENT_STEP}/${TOTAL_STEPS}] ${step_name}"
 }
 

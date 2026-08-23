@@ -78,10 +78,17 @@ CURRENT_STEP=0
 show_progress() {
 	local step_name="$1"
 	CURRENT_STEP=$((CURRENT_STEP + 1))
-	echo ""
-	echo -e "${AZUL}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-	echo -e "${ROXO}[${CURRENT_STEP}/${TOTAL_STEPS}]${NC} ${VERDE}${step_name}${NC}"
-	echo -e "${AZUL}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+	local bar_width=30
+	local completed=$((CURRENT_STEP * bar_width / TOTAL_STEPS))
+	local remaining=$((bar_width - completed))
+	local bar=""
+	local empty=""
+	printf -v bar '%*s' "$completed" ''
+	printf -v empty '%*s' "$remaining" ''
+	bar=${bar// /#}
+	empty=${empty// /-}
+	printf "${ROXO}[%s%s]${NC} ${VERDE}%02d/%02d %s${NC}\n" \
+		"$bar" "$empty" "$CURRENT_STEP" "$TOTAL_STEPS" "$step_name"
 	log_to_file "[${CURRENT_STEP}/${TOTAL_STEPS}] ${step_name}"
 }
 
@@ -290,13 +297,11 @@ start_sudo_keepalive() {
 # Helper to run commands and fail with message
 try_cmd() {
 	if [[ "${DRY_RUN:-false}" == true ]]; then
-		echo -e "${AMARELO}(dry-run) CMD:${NC} $*"
 		log_to_file "(dry-run) $*"
 		return 0
 	fi
 	log_to_file "CMD: $*"
-	"$@" 2>&1 | tee -a "$LOGFILE"
-	return "${PIPESTATUS[0]}"
+	"$@" >>"$LOGFILE" 2>&1
 }
 
 run_with_retry() {
@@ -872,20 +877,6 @@ else
 	echo -e "${VERDE}✓ ${#SELECTED_APPS[@]} aplicativo(s) selecionado(s)${NC}"
 fi
 
-# Opção para reiniciar o sistema após execução
-echo ""
-restart_choice=$(prompt_choice "Reiniciar o sistema ao final? (y/n)" "n")
-case "${restart_choice,,}" in
-	y | yes)
-		RESTART_SYSTEM=true
-		echo -e "${VERDE}✓ Sistema será reiniciado ao final${NC}"
-		;;
-	*)
-		RESTART_SYSTEM=false
-		echo -e "${VERDE}✓ Sem reinício do sistema${NC}"
-		;;
-esac
-
 echo ""
 echo -e "${AZUL}Configurações confirmadas!${NC}"
 echo "-------------------------------------------------------------"
@@ -901,7 +892,6 @@ echo -e "${ROXO}║${NC}   AUR Helper:     ${VERDE}${AUR_HELPER}${NC}"
 echo -e "${ROXO}║${NC}   Pamac:          ${VERDE}${PAMAC_PKG}${NC}"
 echo -e "${ROXO}║${NC}   DNS:            ${VERDE}${DNS_PROVIDER}${NC}"
 echo -e "${ROXO}║${NC}   Flatpaks:       ${VERDE}${#SELECTED_APPS[@]} selecionado(s)${NC}"
-echo -e "${ROXO}║${NC}   Reiniciar:      ${VERDE}${RESTART_SYSTEM}${NC}"
 echo -e "${ROXO}║${NC}   Dry-run:        ${VERDE}${DRY_RUN}${NC}"
 echo -e "${ROXO}╚═════════════════════════════════════════════════════════╝${NC}"
 echo ""
@@ -1737,7 +1727,17 @@ if is_installed notify-send; then
 	notify-send -i dialog-information "WELLARCH v${VERSION}" "Setup completo em ${ELAPSED_MIN}m ${ELAPSED_SEC}s! ✨" 2>/dev/null || true
 fi
 
-# Reiniciar sistema se solicitado
+# Perguntar somente ao final, depois de concluir e mostrar o relatório.
+if [[ "$ASSUME_YES" != true ]]; then
+	read -r -p "Deseja reiniciar o computador agora? (y/n): " restart_choice
+	case "${restart_choice,,}" in
+		y | yes) RESTART_SYSTEM=true ;;
+		*) RESTART_SYSTEM=false ;;
+	esac
+else
+	RESTART_SYSTEM=false
+fi
+
 if [[ "$RESTART_SYSTEM" == true ]]; then
 	if [[ "${DRY_RUN:-false}" == true ]]; then
 		echo -e "${AMARELO}(dry-run) reinício do sistema solicitado; pulando.${NC}"
