@@ -250,6 +250,19 @@ test_stdin_execution() {
     ((TESTS_RUN++)) || true
 }
 
+test_vscode_package() {
+    run_test "Visual Studio Code package"
+
+    if grep -A2 'install_development_tools()' "${SCRIPT_DIR}/wellarch.sh" | grep -Fxq $'\tinstall_pkg_preferred "Visual Studio Code" "visual-studio-code-bin"'; then
+        ((TESTS_PASSED++)) || true
+        echo -e "  ${GREEN}✓${NC} Uses the official VS Code AUR package"
+    else
+        ((TESTS_FAILED++)) || true
+        echo -e "  ${RED}✗${NC} Uses the official VS Code AUR package"
+    fi
+    ((TESTS_RUN++)) || true
+}
+
 # ==============================================================================
 # MAIN
 # ==============================================================================
@@ -273,6 +286,7 @@ main() {
     test_script_syntax
     test_removed_features
     test_stdin_execution
+    test_vscode_package
     
     # Summary
     echo ""

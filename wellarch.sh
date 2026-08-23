@@ -1233,7 +1233,7 @@ install_desktop_apps() {
 
 install_development_tools() {
 	show_progress "Ferramentas de Desenvolvimento"
-	install_pkg_preferred "Visual Studio Code" "code" "visual-studio-code-bin"
+	install_pkg_preferred "Visual Studio Code" "visual-studio-code-bin"
 }
 
 if [[ "$SKIP_EXTRAS" == true ]]; then
