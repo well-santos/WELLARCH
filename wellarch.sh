@@ -15,24 +15,40 @@ if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
 	SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
+# Find lib directory (support multiple installation locations)
+LIB_DIR="${WELLARCH_LIB_DIR:-}"
+if [[ -z "$LIB_DIR" ]]; then
+    for candidate in \
+        "${SCRIPT_DIR}/lib" \
+        "$(dirname "$SCRIPT_DIR")/lib" \
+        "$HOME/.local/lib/wellarch" \
+        "/usr/local/lib/wellarch" \
+        "/usr/lib/wellarch"; do
+        if [[ -d "$candidate" && -f "$candidate/common.sh" ]]; then
+            LIB_DIR="$candidate"
+            break
+        fi
+    done
+fi
+
 # Source common library if available, otherwise use inline definitions
-if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/lib/common.sh" ]]; then
+if [[ -n "$LIB_DIR" && -f "${LIB_DIR}/common.sh" ]]; then
     # shellcheck source=lib/common.sh
-    source "${SCRIPT_DIR}/lib/common.sh"
+    source "${LIB_DIR}/common.sh"
     USING_COMMON_LIB=true
 
     for lib_file in \
-        "${SCRIPT_DIR}/lib/menu.sh" \
-        "${SCRIPT_DIR}/lib/safe_mode.sh" \
-        "${SCRIPT_DIR}/lib/system.sh" \
-        "${SCRIPT_DIR}/lib/steps.sh" \
-        "${SCRIPT_DIR}/lib/aur.sh" \
-        "${SCRIPT_DIR}/lib/mirrors.sh" \
-        "${SCRIPT_DIR}/lib/flatpak.sh" \
-        "${SCRIPT_DIR}/lib/packages.sh" \
-        "${SCRIPT_DIR}/lib/dns.sh" \
-        "${SCRIPT_DIR}/lib/system_setup.sh" \
-        "${SCRIPT_DIR}/lib/linuxtoys.sh"; do
+        "${LIB_DIR}/menu.sh" \
+        "${LIB_DIR}/safe_mode.sh" \
+        "${LIB_DIR}/system.sh" \
+        "${LIB_DIR}/steps.sh" \
+        "${LIB_DIR}/aur.sh" \
+        "${LIB_DIR}/mirrors.sh" \
+        "${LIB_DIR}/flatpak.sh" \
+        "${LIB_DIR}/packages.sh" \
+        "${LIB_DIR}/dns.sh" \
+        "${LIB_DIR}/system_setup.sh" \
+        "${LIB_DIR}/linuxtoys.sh"; do
         if [[ -f "$lib_file" ]]; then
             # shellcheck source=/dev/null
             source "$lib_file"
@@ -799,6 +815,19 @@ fi
 # ==============================================================================
 # MENU DE CONFIGURAÇÕES
 # ==============================================================================
+
+# Verify that menu functions are available
+if ! declare -f menu_select &>/dev/null || ! declare -f menu_multiselect &>/dev/null; then
+	echo -e "${VERMELHO}❌ Erro: Bibliotecas de menu não foram carregadas.${NC}"
+	echo "SCRIPT_DIR: $SCRIPT_DIR"
+	echo "LIB_DIR: ${LIB_DIR:-não encontrado}"
+	echo ""
+	echo "Soluções:"
+	echo "  1. Execute o script de seu diretório: cd wellarch && ./wellarch.sh"
+	echo "  2. Ou especifique o caminho das libs: WELLARCH_LIB_DIR=/caminho/lib ./wellarch.sh"
+	echo "  3. Ou instale em: /usr/local/bin/wellarch.sh e /usr/local/lib/wellarch/"
+	exit 127
+fi
 
 echo ""
 echo -e "${AZUL}⚙️  CONFIGURAÇÕES PRÉ-INSTALAÇÃO${NC}"
