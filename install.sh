@@ -20,6 +20,16 @@ if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/lib/common.sh" ]]; then
     # shellcheck source=lib/common.sh
     source "${SCRIPT_DIR}/lib/common.sh"
     USING_COMMON_LIB=true
+
+    for lib_file in \
+        "${SCRIPT_DIR}/lib/safe_mode.sh" \
+        "${SCRIPT_DIR}/lib/system.sh" \
+        "${SCRIPT_DIR}/lib/steps.sh"; do
+        if [[ -f "$lib_file" ]]; then
+            # shellcheck source=/dev/null
+            source "$lib_file"
+        fi
+    done
 fi
 
 # If common lib not available, provide minimal color and logging fallbacks

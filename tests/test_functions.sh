@@ -253,7 +253,7 @@ test_stdin_execution() {
 test_vscode_package() {
     run_test "Visual Studio Code package"
 
-    if grep -A2 'install_development_tools()' "${SCRIPT_DIR}/wellarch.sh" | grep -Fxq $'\tinstall_pkg_preferred "Visual Studio Code" "visual-studio-code-bin"'; then
+    if grep -q 'install_pkg_preferred "Visual Studio Code" "visual-studio-code-bin"' "${SCRIPT_DIR}/lib/packages.sh"; then
         ((TESTS_PASSED++)) || true
         echo -e "  ${GREEN}✓${NC} Uses the official VS Code AUR package"
     else
@@ -261,6 +261,27 @@ test_vscode_package() {
         echo -e "  ${RED}✗${NC} Uses the official VS Code AUR package"
     fi
     ((TESTS_RUN++)) || true
+}
+
+test_safe_mode_guard() {
+    run_test "Safe mode guard"
+
+    if declare -f safe_mode_enabled >/dev/null 2>&1 && declare -f allow_destructive_action >/dev/null 2>&1; then
+        SAFE_MODE=true
+        if safe_mode_enabled && ! allow_destructive_action "DNS test"; then
+            ((TESTS_PASSED++)) || true
+            echo -e "  ${GREEN}✓${NC} Safe mode blocks destructive actions by default"
+        else
+            ((TESTS_FAILED++)) || true
+            echo -e "  ${RED}✗${NC} Safe mode blocks destructive actions by default"
+        fi
+        ((TESTS_RUN++)) || true
+    else
+        ((TESTS_FAILED++)) || true
+        echo -e "  ${RED}✗${NC} Safe mode guard helpers are missing"
+        ((TESTS_RUN++)) || true
+    fi
+    SAFE_MODE=false
 }
 
 # ==============================================================================
@@ -287,6 +308,7 @@ main() {
     test_removed_features
     test_stdin_execution
     test_vscode_package
+    test_safe_mode_guard
     
     # Summary
     echo ""

@@ -20,6 +20,23 @@ if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/lib/common.sh" ]]; then
     # shellcheck source=lib/common.sh
     source "${SCRIPT_DIR}/lib/common.sh"
     USING_COMMON_LIB=true
+
+    for lib_file in \
+        "${SCRIPT_DIR}/lib/safe_mode.sh" \
+        "${SCRIPT_DIR}/lib/system.sh" \
+        "${SCRIPT_DIR}/lib/steps.sh" \
+        "${SCRIPT_DIR}/lib/aur.sh" \
+        "${SCRIPT_DIR}/lib/mirrors.sh" \
+        "${SCRIPT_DIR}/lib/flatpak.sh" \
+        "${SCRIPT_DIR}/lib/packages.sh" \
+        "${SCRIPT_DIR}/lib/dns.sh" \
+        "${SCRIPT_DIR}/lib/system_setup.sh" \
+        "${SCRIPT_DIR}/lib/linuxtoys.sh"; do
+        if [[ -f "$lib_file" ]]; then
+            # shellcheck source=/dev/null
+            source "$lib_file"
+        fi
+    done
 else
     USING_COMMON_LIB=false
     
@@ -494,6 +511,7 @@ FAILED_ITEMS=()
 # Argumentos e flags de skip
 DRY_RUN=false
 ASSUME_YES=false
+SAFE_MODE=true
 FORCE_RESOLV_LOCK=false
 SKIP_UPDATE=false
 SKIP_MIRRORS=false
@@ -555,6 +573,14 @@ while [ $# -gt 0 ]; do
 		;;
 	--yes | -y)
 		ASSUME_YES=true
+		shift
+		;;
+	--unsafe)
+		SAFE_MODE=false
+		shift
+		;;
+	--safe)
+		SAFE_MODE=true
 		shift
 		;;
 	--verbose)
@@ -662,6 +688,8 @@ ${AMARELO}OPÇÕES GERAIS:${NC}
   --non-interactive      Evita prompts (use com --yes)
   --version              Exibe versão do script
   --yes, -y              Assume "sim" para todos os prompts
+  --safe                 Ativa modo seguro (bloqueia ações destrutivas por padrão)
+  --unsafe               Permite ações destrutivas; desativa modo seguro
   --force-resolv-lock    Trava /etc/resolv.conf com chattr +i
   --skip-resolv-conf     Não sobrescreve /etc/resolv.conf
   --post-check           Executa verificação pós-instalação
@@ -685,8 +713,11 @@ ${AMARELO}EXEMPLOS:${NC}
   # Executar normalmente:
   $0
 
-  # Modo automático:
-  $0 --yes
+# Modo automático (seguro por padrão):
+	$0 --yes
+
+	# Permitir ações destrutivas explícitas:
+	$0 --unsafe --yes
 
   # Usar arquivo de configuração:
   $0 --config ~/.config/wellarch/config
@@ -972,6 +1003,12 @@ update_system() {
 		return 0
 	fi
 	
+	if ! allow_destructive_action "Atualização do Sistema"; then
+		echo -e "${AMARELO}⏭️  Modo seguro ativo: atualização do sistema bloqueada.${NC}"
+		add_skipped_step "Atualização do Sistema (modo seguro)"
+		return 0
+	fi
+	
 	echo "🔄 Atualizando sistema com pacman -Syu..."
 	if sudo_run_retry "Atualização do Sistema (pacman -Syu)" pacman -Syu --noconfirm; then
 		echo -e "${VERDE}✅ Sistema atualizado!${NC}"
@@ -986,521 +1023,52 @@ update_system
 # ---------------------------------------------------------
 # 2. Atualizar mirrorlist com reflector (rápido e recomendado)
 # ---------------------------------------------------------
-setup_reflector() {
-	show_progress "Otimização de Mirrors"
-	
-	if [[ "$SKIP_MIRRORS" == true ]]; then
-		echo -e "${AMARELO}⏭️  Pulando otimização de mirrors (--skip-mirrors)${NC}"
-		add_skipped_step "Otimização de Mirrors"
-		return 0
-	fi
-	
-	if [[ "${DRY_RUN:-false}" == true ]]; then
-		echo -e "${AMARELO}(dry-run) pulando atualização de mirrors com reflector${NC}"
-		return 0
-	fi
-
-	if ! is_installed reflector; then
-		echo "🔧 Instalando reflector para ordenação de mirrors..."
-		sudo_run_retry "Instalação do reflector" pacman -S --needed reflector --noconfirm || {
-			echo -e "${AMARELO}⚠️ Não foi possível instalar reflector automaticamente.${NC}"
-			return 0
-		}
-	else
-		echo "✅ reflector já instalado."
-	fi
-
-	if is_installed reflector; then
-		echo "🔄 Atualizando /etc/pacman.d/mirrorlist priorizando Brasil..."
-		backup_file /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.wellarch.bak
-		if ! sudo_run reflector --country Brazil --protocol https --latest 20 --sort rate --age 24 --save /etc/pacman.d/mirrorlist; then
-			echo -e "${AMARELO}⚠️ Falha ao executar reflector com país Brasil; mantendo mirrorlist atual.${NC}"
-			return 0
-		fi
-		sudo_run_retry "Atualização de mirrors (pacman -Syy)" pacman -Syy --noconfirm || true
-	fi
-}
-
-setup_reflector
+wellarch_setup_reflector
 
 # ---------------------------------------------------------
 # 3. CHAOTIC AUR
 # ---------------------------------------------------------
-setup_chaotic_aur() {
-	show_progress "Configuração do Chaotic AUR"
-	
-	if [[ "$SKIP_CHAOTIC" == true ]]; then
-		echo -e "${AMARELO}⏭️  Pulando Chaotic AUR (--skip-chaotic)${NC}"
-		add_skipped_step "Configuração do Chaotic AUR"
-		return 0
-	fi
-	
-	if grep -q "chaotic-aur" /etc/pacman.conf; then
-		echo "✅ Chaotic AUR já está configurado. Pulando."
-		return 0
-	fi
-	echo "🌀 Configurando Chaotic AUR..."
-	backup_file /etc/pacman.conf /etc/pacman.conf.bak
-	echo "   📝 Backup de /etc/pacman.conf criado em /etc/pacman.conf.bak"
-
-	sudo_run pacman-key --recv-key 3056513887B78AEB --keyserver keyserver.ubuntu.com
-	sudo_run pacman-key --lsign-key 3056513887B78AEB
-	if ! sudo_run_retry "Configuração do Chaotic AUR (pacman -U)" pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' \
-		'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst' --noconfirm; then
-		parar_com_erro "Configuração do Chaotic AUR (pacman -U)"
-	fi
-	echo -e "\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist" | sudo_run tee -a /etc/pacman.conf >/dev/null
-	if ! sudo_run_retry "Configuração do Chaotic AUR (pacman -Sy)" pacman -Sy --noconfirm; then
-		parar_com_erro "Configuração do Chaotic AUR (pacman -Sy)"
-	fi
-	echo -e "${VERDE}✅ Chaotic AUR configurado!${NC}"
-	INSTALLED_PACKAGES+=("Chaotic AUR")
-}
-
-setup_chaotic_aur
+wellarch_setup_chaotic_aur
 
 # ---------------------------------------------------------
 # 4. AUR HELPER (PARU OU YAY)
 # ---------------------------------------------------------
-install_aur_helper() {
-	show_progress "Instalação do AUR Helper"
-	
-	if is_installed "$AUR_HELPER"; then
-		echo "✅ $AUR_HELPER já está instalado. Pulando."
-		return 0
-	fi
-	echo "📦 Instalando $AUR_HELPER..."
-
-	if [[ "${DRY_RUN:-false}" == true ]]; then
-		echo -e "${AMARELO}(dry-run) pulando instalação do $AUR_HELPER${NC}"
-		return 0
-	fi
-
-	if sudo_run_retry "Instalação do $AUR_HELPER (pacman)" pacman -S "$AUR_HELPER" --noconfirm 2>/dev/null; then
-		echo -e "${VERDE}✅ $AUR_HELPER instalado via repositório!${NC}"
-		INSTALLED_PACKAGES+=("$AUR_HELPER")
-		return 0
-	fi
-
-	echo "📦 Instalando $AUR_HELPER-bin do AUR..."
-	if ! sudo_run_retry "Instalação de base-devel/git" pacman -S --needed base-devel git --noconfirm; then
-		parar_com_erro "Instalação de base-devel/git"
-	fi
-	local tmpdir
-	tmpdir=$(mktemp -d)
-	TMP_DIRS+=("$tmpdir")
-
-	if ! run_with_retry "Clone do $AUR_HELPER-bin" git clone "https://aur.archlinux.org/${AUR_HELPER}-bin.git" "$tmpdir/$AUR_HELPER"; then
-		parar_com_erro "Clone do $AUR_HELPER-bin"
-	fi
-	pushd "$tmpdir/$AUR_HELPER" >/dev/null || return 1
-
-	if [[ "${DRY_RUN:-false}" == true ]]; then
-		echo -e "${AMARELO}(dry-run) pulando makepkg para $AUR_HELPER${NC}"
-	else
-		if ! makepkg -si --noconfirm; then
-			popd >/dev/null
-			parar_com_erro "Instalação do $AUR_HELPER (makepkg)"
-		fi
-	fi
-
-	popd >/dev/null
-	if [[ "$tmpdir" == /* && -d "$tmpdir" ]]; then
-		rm -rf -- "$tmpdir"
-	fi
-	TMP_DIRS=()
-	echo -e "${VERDE}✅ $AUR_HELPER instalado via AUR!${NC}"
-	INSTALLED_PACKAGES+=("$AUR_HELPER")
-}
-
-install_aur_helper
+wellarch_install_aur_helper
 
 # ---------------------------------------------------------
 # 5. FLATPAK & FLATHUB
 # ---------------------------------------------------------
-setup_flatpak() {
-	show_progress "Configuração do Flatpak"
-	
-	if [[ "$SKIP_FLATPAK" == true ]]; then
-		echo -e "${AMARELO}⏭️  Pulando Flatpak (--skip-flatpak)${NC}"
-		add_skipped_step "Configuração do Flatpak"
-		return 0
-	fi
-	
-	if ! is_installed flatpak; then
-		echo "📦 Instalando Flatpak..."
-		if ! sudo_run_retry "Instalação do Flatpak" pacman -S flatpak --noconfirm; then
-			echo -e "${AMARELO}⚠️ Falha ao instalar Flatpak.${NC}"
-			FAILED_ITEMS+=("Flatpak")
-			return 0
-		fi
-		INSTALLED_PACKAGES+=("Flatpak")
-	else
-		echo "✅ Flatpak já está instalado."
-	fi
-
-	if ! flatpak remote-list 2>/dev/null | grep -q "flathub"; then
-		echo "🌐 Adicionando Flathub..."
-		if ! run_with_retry "Configuração do Flathub" flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo; then
-			echo -e "${AMARELO}⚠️ Falha ao adicionar Flathub.${NC}"
-			FAILED_ITEMS+=("Flathub")
-			return 0
-		fi
-		echo -e "${VERDE}✅ Flathub configurado!${NC}"
-	else
-		echo "✅ Repositório Flathub já ativo. Pulando."
-	fi
-}
-
-setup_flatpak
+wellarch_setup_flatpak
 
 # ---------------------------------------------------------
 # 6. APPS FLATPAK
 # ---------------------------------------------------------
-show_progress "Instalação de Apps Flatpak"
-
-if [[ "$SKIP_FLATPAK" == true ]]; then
-	echo -e "${AMARELO}⏭️  Pulando apps Flatpak (--skip-flatpak)${NC}"
-	add_skipped_step "Apps Flatpak"
-elif [[ ${#SELECTED_APPS[@]} -gt 0 ]]; then
-echo "📱 Instalando aplicativos Flatpak selecionados..."
-for APP in "${SELECTED_APPS[@]}"; do
-	if flatpak list --app | grep -Fxq "$APP"; then
-		echo -e "   ℹ️  $APP já instalado. Pulando."
-	else
-		echo -e "   ⬇️  Instalando $APP..."
-		if [[ "$DRY_RUN" == true ]]; then
-			echo "   (dry-run) pulando instalação de $APP"
-		else
-			if run_with_retry "Instalação do Flatpak $APP" flatpak install flathub "$APP" -y; then
-				INSTALLED_FLATPAKS+=("$APP")
-			else
-				echo -e "   ${AMARELO}⚠️  Erro. Reparando e tentando novamente...${NC}"
-				sudo_run flatpak repair || true
-				if run_with_retry "Instalação do Flatpak $APP (retry)" flatpak install flathub "$APP" -y; then
-					INSTALLED_FLATPAKS+=("$APP")
-				else
-					echo -e "   ${VERMELHO}❌ Falha ao instalar $APP${NC}"
-					FAILED_ITEMS+=("$APP")
-				fi
-			fi
-		fi
-	fi
-done
-else
-	echo "ℹ️  Nenhum aplicativo Flatpak selecionado para instalar."
-fi
+wellarch_install_flatpak_apps
 
 # ---------------------------------------------------------
 # 7. PAMAC (via AUR Helper)
 # ---------------------------------------------------------
-show_progress "Instalação do Pamac"
-
-if [[ "$SKIP_PAMAC" == true ]]; then
-	echo -e "${AMARELO}⏭️  Pulando Pamac (--skip-pamac)${NC}"
-	add_skipped_step "Instalação do Pamac"
-elif is_installed pamac; then
-	echo "✅ Pamac já está instalado. Pulando."
-else
-	echo "🛍️  Instalando $PAMAC_PKG..."
-	if [[ "${DRY_RUN:-false}" == true ]]; then
-		echo "(dry-run) pulando instalação do $PAMAC_PKG"
-	else
-		ensure_base_devel
-		if ! $AUR_HELPER -S "$PAMAC_PKG" --noconfirm; then
-			parar_com_erro "Instalação do $PAMAC_PKG"
-		fi
-		INSTALLED_PACKAGES+=("Pamac")
-	fi
-	echo -e "${VERDE}✅ Pamac instalado!${NC}"
-fi
+wellarch_install_pamac
 
 # ---------------------------------------------------------
 # 8. TEMAS, APLICATIVOS E FERRAMENTAS
 # ---------------------------------------------------------
-show_progress "Temas, Aplicativos e Ferramentas"
-
-install_theme_packages() {
-	show_progress "Temas"
-	install_pkg_preferred "Cursor Fluent" "cursor-fluent" "fluent-cursor-theme"
-	install_pkg_preferred "GNOME Themes Extra" "gnome-themes-extra"
-}
-
-install_desktop_apps() {
-	show_progress "Aplicativos"
-	install_pkg_preferred "GDM Settings" "gdm-settings"
-}
-
-install_development_tools() {
-	show_progress "Ferramentas de Desenvolvimento"
-	install_pkg_preferred "Visual Studio Code" "visual-studio-code-bin"
-}
-
-if [[ "$SKIP_EXTRAS" == true ]]; then
-	echo -e "${AMARELO}⏭️  Pulando apps e temas essenciais (--skip-extras)${NC}"
-	add_skipped_step "Apps e Temas Essenciais"
-else
-	install_theme_packages
-	install_desktop_apps
-	install_development_tools
-fi
+wellarch_install_extras
 
 # ---------------------------------------------------------
 # 9. LINUXTOYS
 # ---------------------------------------------------------
-show_progress "Instalação do LinuxToys"
-
-MARKER_FILE="$HOME/.config/linuxtoys_installed.marker"
-
-if [[ "$SKIP_LINUXTOYS" == true ]]; then
-	echo -e "${AMARELO}⏭️  Pulando LinuxToys (--skip-linuxtoys)${NC}"
-	add_skipped_step "Instalação do LinuxToys"
-elif [ -f "$MARKER_FILE" ]; then
-	echo "✅ LinuxToys já foi executado. Pulando."
-else
-	echo "🧸 Instalando LinuxToys..."
-	if [[ "${DRY_RUN:-false}" == true ]]; then
-		echo -e "${AMARELO}(dry-run) verificaria dependências e download do LinuxToys${NC}"
-	else
-		DEPS=(bash git curl wget zenity python python-gobject python-requests gtk3 vte3)
-		if ! sudo_run_retry "Instalação de dependências do LinuxToys" pacman -S --needed "${DEPS[@]}" --noconfirm; then
-			echo -e "${AMARELO}⚠️ Falha ao instalar dependências do LinuxToys.${NC}"
-			FAILED_ITEMS+=("LinuxToys (deps)")
-		else
-			lt_tmp=$(mktemp -d)
-			TMP_DIRS+=("$lt_tmp")
-			lt_script="$lt_tmp/linuxtoys-install.sh"
-			CURL_OPTS=(-fsSL --connect-timeout 10)
-			if [[ "$DOWNLOAD_TIMEOUT" -gt 0 ]]; then
-				CURL_OPTS+=(--max-time "$DOWNLOAD_TIMEOUT")
-			fi
-
-			if ! run_with_retry "Download do LinuxToys" curl "${CURL_OPTS[@]}" -o "$lt_script" https://linux.toys/install.sh; then
-				echo -e "${VERMELHO}⚠️ Falha ao baixar LinuxToys.${NC}"
-				FAILED_ITEMS+=("LinuxToys")
-			else
-				echo "Script LinuxToys salvo em: $lt_script"
-				LT_OK=false
-				if [[ -n "${LINUXTOYS_SHA256:-}" ]]; then
-					if echo "${LINUXTOYS_SHA256}  $lt_script" | sha256sum -c --status 2>/dev/null; then
-						echo "   ✅ Checksum do LinuxToys verificado."
-					else
-						echo -e "${VERMELHO}❌ Checksum do LinuxToys não confere. Abortando execução.${NC}"
-						FAILED_ITEMS+=("LinuxToys (checksum)")
-					fi
-				else
-					echo -e "${AMARELO}⚠️ Sem LINUXTOYS_SHA256 definido; executando sem verificação de integridade.${NC}"
-				fi
-
-				if [[ "$ASSUME_YES" == true ]]; then
-					if bash "$lt_script"; then
-						LT_OK=true
-					fi
-				else
-					read -r -p "Executar o instalador do LinuxToys agora? (y/n): " anslt
-					if [[ "$anslt" =~ ^[yY]$ ]] && bash "$lt_script"; then
-						LT_OK=true
-					fi
-				fi
-
-				if [[ "$LT_OK" == true ]]; then
-					touch "$MARKER_FILE"
-					echo -e "${VERDE}✅ LinuxToys instalado e marcador criado!${NC}"
-					INSTALLED_PACKAGES+=("LinuxToys")
-				else
-					echo -e "${VERMELHO}⚠️ Falha no LinuxToys.${NC}"
-					FAILED_ITEMS+=("LinuxToys")
-				fi
-			fi
-
-			if [[ "$lt_tmp" = /* ]] && [[ -d "$lt_tmp" ]]; then
-				rm -rf -- "$lt_tmp"
-			fi
-			TMP_DIRS=()
-		fi
-	fi
-fi
+wellarch_install_linuxtoys
 
 # ---------------------------------------------------------
 # 10. DNS (SOLUÇÃO DEFINITIVA NETWORK MANAGER)
 # ---------------------------------------------------------
-setup_dns() {
-	show_progress "Configuração de DNS"
-	
-	if [[ "$SKIP_DNS" == true ]]; then
-		echo -e "${AMARELO}⏭️  Pulando configuração de DNS (--skip-dns)${NC}"
-		add_skipped_step "Configuração de DNS"
-		return 0
-	fi
-
-	if [[ "$DNS_PROVIDER" == "none" ]]; then
-		echo "⏭️ DNS: Mantendo configuração padrão do sistema."
-		add_skipped_step "Configuração de DNS (padrão do sistema)"
-		return 0
-	fi
-
-	if [[ -z "${DNS_SERVERS:-}" ]]; then
-		echo -e "${AMARELO}⚠️ DNS_SERVERS vazio; pulando configuração de DNS.${NC}"
-		return 0
-	fi
-
-	echo "🌐 Configurando DNS (IPv4 e IPv6)..."
-	NM_CONF="/etc/NetworkManager/conf.d/99-dns-provider.conf"
-	RESOLV_CONF="/etc/resolv.conf"
-	RESOLV_BACKUP="/etc/resolv.conf.wellarch.bak"
-	if command -v systemctl >/dev/null 2>&1; then
-		if systemctl is-active --quiet systemd-resolved; then
-			log_warn "systemd-resolved está ativo; /etc/resolv.conf pode ser gerenciado automaticamente."
-			if [[ "$SKIP_RESOLV_CONF" == true ]]; then
-				log_warn "Pulando alterações em /etc/resolv.conf (--skip-resolv-conf)."
-			fi
-		fi
-	fi
-
-	# Agrupa servidores por família
-	IFS=',' read -ra SERVERS <<<"$DNS_SERVERS"
-	IPV4_SERVERS=()
-	IPV6_SERVERS=()
-	for server in "${SERVERS[@]}"; do
-		if [[ "$server" == *:* ]]; then
-			IPV6_SERVERS+=("$server")
-		else
-			IPV4_SERVERS+=("$server")
-		fi
-	done
-
-	# Cria pasta de config do NM
-	sudo_run mkdir -p /etc/NetworkManager/conf.d/
-	NM_SERVERS="${DNS_SERVERS//,/ }"
-	sudo_run tee "$NM_CONF" >/dev/null <<EOF
-[main]
-dns=default
-
-[global-dns-domain-*]
-servers=$NM_SERVERS
-EOF
-	echo "   📄 Configuração do NetworkManager criada para $DNS_PROVIDER."
-
-	if [[ "$SKIP_RESOLV_CONF" != true ]]; then
-		# Backup seguro do resolv.conf
-		backup_file "$RESOLV_CONF" "$RESOLV_BACKUP"
-		if [[ -f "$RESOLV_BACKUP" ]]; then
-			echo "   🗂️  Backup de resolv.conf salvo em $RESOLV_BACKUP"
-		fi
-
-		# Se resolv.conf for symlink (ex.: systemd-resolved stub), substituir por arquivo real
-		if [[ -L "$RESOLV_CONF" ]]; then
-			echo "   ℹ️  resolv.conf é symlink; substituindo por arquivo gerenciado pelo WELLARCH."
-			sudo_run rm -f "$RESOLV_CONF"
-		fi
-
-		sudo_run rm -f "$RESOLV_CONF" || true
-
-		for server in "${SERVERS[@]}"; do
-			printf "nameserver %s\n" "$server" | sudo_run tee -a "$RESOLV_CONF" >/dev/null
-		done
-
-		if [[ "$FORCE_RESOLV_LOCK" == true ]]; then
-			echo "   🔒 Travando resolv.conf (opção forçada)."
-			sudo_run chattr +i "$RESOLV_CONF"
-		else
-			echo "   ℹ️  resolv.conf atualizado. Use --force-resolv-lock para travar (não recomendado)."
-		fi
-	fi
-
-	# Aplicar via nmcli para conexões ativas (garante IPv6)
-	if command -v nmcli >/dev/null 2>&1; then
-		mapfile -t ACTIVE_CONNS < <(nmcli -t -f NAME connection show --active)
-		if [[ ${#ACTIVE_CONNS[@]} -eq 0 ]]; then
-			echo "   ⚠️ Nenhuma conexão ativa encontrada para aplicar DNS via nmcli."
-		else
-			for CONN in "${ACTIVE_CONNS[@]}"; do
-				echo "   🔧 Aplicando DNS na conexão: $CONN"
-				if [[ "${DRY_RUN:-false}" == true ]]; then
-					echo "   (dry-run) não modificando a conexão $CONN"
-					continue
-				fi
-				nmcli connection modify "$CONN" ipv4.ignore-auto-dns yes ipv6.ignore-auto-dns yes 2>/dev/null || true
-				if [[ ${#IPV4_SERVERS[@]} -gt 0 ]]; then
-					nmcli connection modify "$CONN" ipv4.dns "${IPV4_SERVERS[*]}" 2>/dev/null || true
-				fi
-				if [[ ${#IPV6_SERVERS[@]} -gt 0 ]]; then
-					nmcli connection modify "$CONN" ipv6.dns "${IPV6_SERVERS[*]}" 2>/dev/null || true
-				fi
-				nmcli connection up "$CONN" >/dev/null 2>&1 || nmcli connection reload >/dev/null 2>&1 || true
-			done
-		fi
-	else
-		echo "   ⚠️ nmcli não encontrado; apenas resolv.conf foi atualizado."
-	fi
-
-	echo "   🔄 Reiniciando NetworkManager..."
-	sudo_run systemctl restart NetworkManager
-
-	echo -e "${VERDE}✅ DNS configurado (IPv4/IPv6)!${NC}"
-	INSTALLED_PACKAGES+=("DNS: $DNS_PROVIDER")
-}
-
-setup_dns
+wellarch_setup_dns
 
 # ---------------------------------------------------------
 # 11. CONFIGURAÇÃO DO SHELL
 # ---------------------------------------------------------
-show_progress "Configuração do Shell"
-
-configure_oh_my_zsh() {
-	install_pkg_preferred "Zsh" "zsh"
-	install_pkg_preferred "Git" "git"
-	install_pkg_preferred "Curl" "curl"
-
-	if [[ "${DRY_RUN:-false}" == true ]]; then
-		echo -e "${AMARELO}(dry-run) instalaria Oh My Zsh e aplicaria tema duellj${NC}"
-		return 0
-	fi
-
-	if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
-		echo "🌀 Instalando Oh My Zsh..."
-		RUNZSH=no CHSH=no KEEP_ZSHRC=yes \
-			bash -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" || true
-	else
-		echo "✅ Oh My Zsh já instalado."
-	fi
-
-	if [[ -f "$HOME/.zshrc" ]]; then
-		if grep -q '^ZSH_THEME=' "$HOME/.zshrc"; then
-			sed -i 's/^ZSH_THEME=.*/ZSH_THEME="duellj"/' "$HOME/.zshrc"
-		else
-			echo 'ZSH_THEME="duellj"' >> "$HOME/.zshrc"
-		fi
-		echo -e "${VERDE}✅ Tema do Oh My Zsh definido para duellj${NC}"
-	else
-		echo -e "${AMARELO}⚠️ ~/.zshrc não encontrado; tema do Oh My Zsh não aplicado.${NC}"
-	fi
-
-	if is_installed zsh; then
-		if [[ "$SHELL" != */zsh ]]; then
-			if command -v chsh >/dev/null 2>&1; then
-				chsh -s "$(command -v zsh)" "$USER" >/dev/null 2>&1 || true
-				echo -e "${VERDE}✅ Zsh definido como shell padrão (faça logout/login).${NC}"
-			else
-				echo -e "${AMARELO}⚠️ chsh não disponível; zsh não definido como padrão.${NC}"
-			fi
-		fi
-	fi
-
-	if command -v gsettings >/dev/null 2>&1; then
-		profile_id=$(gsettings get org.gnome.Terminal.ProfilesList default 2>/dev/null || true)
-		profile_id=${profile_id//\'/}
-		if [[ -n "$profile_id" ]]; then
-			gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${profile_id}/" use-custom-command false >/dev/null 2>&1 || true
-			gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${profile_id}/" custom-command "" >/dev/null 2>&1 || true
-			gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${profile_id}/" login-shell true >/dev/null 2>&1 || true
-			echo -e "${VERDE}✅ GNOME Terminal configurado para usar o shell padrão (login).${NC}"
-		fi
-	fi
-}
-
-configure_oh_my_zsh
+wellarch_configure_oh_my_zsh
 
 # Restaurar IFS original
 IFS="$ORIGINAL_IFS"
@@ -1508,76 +1076,7 @@ IFS="$ORIGINAL_IFS"
 # ---------------------------------------------------------
 # 12. LIMPEZA
 # ---------------------------------------------------------
-show_progress "Limpeza do Sistema"
-
-if [[ "$SKIP_CLEANUP" == true ]]; then
-	echo -e "${AMARELO}⏭️  Pulando limpeza (--skip-cleanup)${NC}"
-	add_skipped_step "Limpeza do Sistema"
-else
-
-echo -e "${AZUL}🧹 Limpeza do Sistema...${NC}"
-
-if ! sudo_run_retry "Instalação do pacman-contrib" pacman -S --needed pacman-contrib --noconfirm &>/dev/null; then
-	echo -e "${AMARELO}⚠️  Falha ao instalar pacman-contrib.${NC}"
-fi
-
-echo "   📦 Limpando cache do Pacman..."
-sudo_run paccache -rk 2 >/dev/null 2>&1
-
-if [[ "$DRY_RUN" == true ]]; then
-	echo "   (dry-run) pulando pacman -Sc destrutivo"
-else
-	echo "   Remoção adicional de caches antigos é opcional; mantendo configuração segura (paccache -rk 2)."
-fi
-
-mapfile -t ORPHANS < <(pacman -Qdtq || true)
-if [[ ${#ORPHANS[@]} -gt 0 ]]; then
-	echo "   🗑️ Órfãos encontrados: ${ORPHANS[*]}"
-	if [[ "$ASSUME_YES" == true ]]; then
-		sudo_run pacman -Rns "${ORPHANS[@]}" --noconfirm
-		echo -e "   ${VERDE}✅ Órfãos removidos.${NC}"
-	else
-		read -r -p "Remover pacotes órfãos acima? (y/n): " ansor
-		if [[ "$ansor" =~ ^[yY]$ ]]; then
-			sudo_run pacman -Rns "${ORPHANS[@]}" --noconfirm
-			echo -e "   ${VERDE}✅ Órfãos removidos.${NC}"
-		else
-			echo "   ✅ Pulando remoção de órfãos."
-		fi
-	fi
-else
-	echo "   ✅ Nenhum órfão encontrado."
-fi
-
-echo "   🦄 Limpando cache do AUR Helper..."
-if [[ "$DRY_RUN" == true ]]; then
-	echo "   (dry-run) pulando limpeza do cache do $AUR_HELPER"
-elif is_installed "$AUR_HELPER"; then
-	if ! $AUR_HELPER -c --noconfirm >/dev/null 2>&1; then
-		echo -e "   ${AMARELO}⚠️  Aviso ao limpar cache do $AUR_HELPER (-c).${NC}"
-	fi
-	if ! $AUR_HELPER -Sc --noconfirm >/dev/null 2>&1; then
-		echo -e "   ${AMARELO}⚠️  Aviso ao limpar cache do $AUR_HELPER (-Sc).${NC}"
-	fi
-else
-	echo "   ℹ️  $AUR_HELPER não encontrado; pulando limpeza do cache."
-fi
-
-echo "   📱 Limpando Flatpaks..."
-if is_installed flatpak; then
-	if [[ "$DRY_RUN" == true ]]; then
-		echo "   (dry-run) pulando limpeza de runtimes Flatpak"
-	else
-		flatpak uninstall --unused -y >/dev/null 2>&1 || true
-	fi
-else
-	echo "   ℹ️  Flatpak não instalado; pulando limpeza."
-fi
-
-echo "   📜 Limpando logs..."
-sudo_run journalctl --vacuum-time=7d >/dev/null 2>&1
-
-fi # Fim do bloco SKIP_CLEANUP
+wellarch_cleanup_system
 
 # ---------------------------------------------------------
 # VERIFICAÇÃO PÓS-INSTALAÇÃO (OPCIONAL)
@@ -1742,8 +1241,12 @@ if [[ "$RESTART_SYSTEM" == true ]]; then
 	if [[ "${DRY_RUN:-false}" == true ]]; then
 		echo -e "${AMARELO}(dry-run) reinício do sistema solicitado; pulando.${NC}"
 	else
-		echo -e "${AMARELO}🔁 Reiniciando o sistema...${NC}"
-		sudo_run systemctl reboot
+		if ! allow_destructive_action "Reinicialização do Sistema"; then
+			echo -e "${AMARELO}⏭️  Modo seguro ativo: reinicialização bloqueada.${NC}"
+		else
+			echo -e "${AMARELO}🔁 Reiniciando o sistema...${NC}"
+			sudo_run systemctl reboot
+		fi
 	fi
 fi
 
