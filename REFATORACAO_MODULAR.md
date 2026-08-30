@@ -1,4 +1,4 @@
-# Refatoração Modular - WELLARCH v15.1.0
+# Refatoração Modular - WELLARCH
 
 ## 📋 Resumo da Refatoração
 

@@ -1,4 +1,4 @@
-# Análise de Melhorias do wellarch.sh - v14.0
+# Análise de Melhorias do wellarch.sh
 
 > Nota: documento histórico da v14.0. A versão atual do WELLARCH é v15.0.0.
 

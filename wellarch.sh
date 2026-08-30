@@ -22,6 +22,7 @@ if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/lib/common.sh" ]]; then
     USING_COMMON_LIB=true
 
     for lib_file in \
+        "${SCRIPT_DIR}/lib/menu.sh" \
         "${SCRIPT_DIR}/lib/safe_mode.sh" \
         "${SCRIPT_DIR}/lib/system.sh" \
         "${SCRIPT_DIR}/lib/steps.sh" \
@@ -802,71 +803,71 @@ echo ""
 echo -e "${AZUL}⚙️  CONFIGURAÇÕES PRÉ-INSTALAÇÃO${NC}"
 echo "-------------------------------------------------------------"
 
-# Menu para escolher AUR Helper (com cores)
+# Menu para escolher AUR Helper
 echo ""
 echo -e "${AMARELO}1. Qual AUR Helper você deseja?${NC}"
-echo -e "   ${VERDE}a)${NC} Paru (padrão, mais rápido)"
-echo -e "   ${VERDE}b)${NC} Yay (alternativa)"
-aur_choice=$(prompt_choice "Escolha (a/b)" "a")
-case "${aur_choice,,}" in
-b | yay)
+aur_choice=$(menu_select "Selecione o AUR Helper" "Paru (padrão, mais rápido)" \
+	"Paru (padrão, mais rápido)" \
+	"Yay (alternativa)")
+case "$aur_choice" in
+*"Yay"*)
 	AUR_HELPER="yay"
 	echo -e "${VERDE}✓ Escolhido: Yay${NC}"
 	;;
-a | paru | *)
+*)
 	AUR_HELPER="paru"
 	echo -e "${VERDE}✓ Escolhido: Paru${NC}"
 	;;
 esac
 
-# Menu para escolher Pamac (com cores)
+# Menu para escolher Pamac
 echo ""
 echo -e "${AMARELO}2. Qual versão do Pamac você deseja?${NC}"
-echo -e "   ${VERDE}a)${NC} Pamac-all (com GUI + Flatpak + AUR, padrão)"
-echo -e "   ${VERDE}b)${NC} Pamac-aur (apenas CLI + AUR)"
-pamac_choice=$(prompt_choice "Escolha (a/b)" "a")
-case "${pamac_choice,,}" in
-b | aur)
+pamac_choice=$(menu_select "Selecione a versão do Pamac" "Pamac-all (com GUI + Flatpak + AUR, padrão)" \
+	"Pamac-all (com GUI + Flatpak + AUR, padrão)" \
+	"Pamac-aur (apenas CLI + AUR)")
+case "$pamac_choice" in
+*"pamac-aur"*)
 	PAMAC_PKG="pamac-aur"
 	echo -e "${VERDE}✓ Escolhido: Pamac-aur${NC}"
 	;;
-a | all | *)
+*)
 	PAMAC_PKG="pamac-all"
 	echo -e "${VERDE}✓ Escolhido: Pamac-all${NC}"
 	;;
 esac
 
-# Menu para escolher DNS (com cores)
+# Menu para escolher DNS
 echo ""
 echo -e "${AMARELO}3. Qual provedor de DNS você deseja?${NC}"
-echo -e "   ${VERDE}a)${NC} Cloudflare (padrão, 1.1.1.1) - Privacidade"
-echo -e "   ${VERDE}b)${NC} Quad9 (9.9.9.9) - Segurança"
-echo -e "   ${VERDE}c)${NC} Google (8.8.8.8) - Velocidade"
-echo -e "   ${VERDE}d)${NC} AdGuard (94.140.14.14) - Bloqueia anúncios"
-echo -e "   ${VERDE}e)${NC} Manter padrão do sistema (sem alterações)"
-dns_choice=$(prompt_choice "Escolha (a/b/c/d/e)" "a")
-case "${dns_choice,,}" in
-b | quad9)
+dns_choice=$(menu_select "Selecione o provedor de DNS" "Cloudflare (padrão, 1.1.1.1) - Privacidade" \
+	"Cloudflare (padrão, 1.1.1.1) - Privacidade" \
+	"Quad9 (9.9.9.9) - Segurança" \
+	"Google (8.8.8.8) - Velocidade" \
+	"AdGuard (94.140.14.14) - Bloqueia anúncios" \
+	"Manter padrão do sistema (sem alterações)")
+case "$dns_choice" in
+*"Quad9"*)
 	DNS_PROVIDER="quad9"
 	DNS_SERVERS="9.9.9.9,149.112.112.112,2620:fe::fe,2620:fe::9"
 	echo -e "${VERDE}✓ Escolhido: Quad9${NC}"
 	;;
-c | google)
+*"Google"*)
 	DNS_PROVIDER="google"
 	DNS_SERVERS="8.8.8.8,8.8.4.4,2001:4860:4860::8888,2001:4860:4860::8844"
 	echo -e "${VERDE}✓ Escolhido: Google DNS${NC}"
 	;;
-d | adguard)
+*"AdGuard"*)
 	DNS_PROVIDER="adguard"
 	DNS_SERVERS="94.140.14.14,94.140.15.15,2a10:50c0::ad1:ff,2a10:50c0::ad2:ff"
 	echo -e "${VERDE}✓ Escolhido: AdGuard DNS${NC}"
 	;;
-e | none | skip)
+*"Manter"*)
 	DNS_PROVIDER="none"
 	DNS_SERVERS=""
 	echo -e "${VERDE}✓ Escolhido: Manter padrão do sistema${NC}"
 	;;
-a | cloudflare | *)
+*)
 	DNS_PROVIDER="cloudflare"
 	DNS_SERVERS="1.1.1.1,1.0.0.1,2606:4700:4700::1111,2606:4700:4700::1001"
 	echo -e "${VERDE}✓ Escolhido: Cloudflare${NC}"
@@ -879,7 +880,7 @@ echo -e "${AMARELO}4. Selecione os aplicativos Flatpak a instalar:${NC}"
 AVAILABLE_APPS=(
 	"com.rtosta.zapzap:ZapZap (WhatsApp)"
 	"org.telegram.desktop:Telegram"
-	"org.equicord.equibop:Equibop"
+	"com.github.vesktop.Vesktop:Vesktop"
 	"com.github.wwmm.easyeffects:Easy Effects"
 	"io.github.flattool.Ignition:Ignition"
 	"com.brave.Browser:Brave Browser"
@@ -887,20 +888,31 @@ AVAILABLE_APPS=(
 	"com.mattjakeman.ExtensionManager:GNOME Extension Manager"
 )
 
-SELECTED_APPS=()
+# Extrai apenas os nomes para apresentar no menu
+APPS_NAMES=()
+APPS_IDS=()
 for app_info in "${AVAILABLE_APPS[@]}"; do
 	app_id="${app_info%%:*}"
 	app_name="${app_info##*:}"
-	if [[ "$ASSUME_YES" == true ]]; then
-		SELECTED_APPS+=("$app_id")
-	else
-		read -r -p "Instalar $app_name? (y/n) [y]: " install_app
-		install_app="${install_app:-y}"
-		if [[ "$install_app" =~ ^[yY]$ ]]; then
-			SELECTED_APPS+=("$app_id")
-		fi
-	fi
+	APPS_IDS+=("$app_id")
+	APPS_NAMES+=("$app_name")
 done
+
+# Seleciona múltiplos apps
+selected_names=$(menu_multiselect "Escolha os Flatpaks (Espaço para selecionar, Enter para confirmar)" "${APPS_NAMES[@]}")
+
+SELECTED_APPS=()
+if [ -n "$selected_names" ]; then
+	# Mapeia nomes selecionados de volta para IDs
+	for selected_name in $selected_names; do
+		for i in "${!APPS_NAMES[@]}"; do
+			if [[ "${APPS_NAMES[$i]}" == "$selected_name" ]]; then
+				SELECTED_APPS+=("${APPS_IDS[$i]}")
+				break
+			fi
+		done
+	done
+fi
 
 if [ ${#SELECTED_APPS[@]} -eq 0 ]; then
 	echo -e "${AMARELO}⚠️  Nenhum app Flatpak selecionado.${NC}"
@@ -928,7 +940,7 @@ echo -e "${ROXO}╚════════════════════�
 echo ""
 
 if [[ "$ASSUME_YES" != true ]]; then
-	read -r -p "Confirmar e iniciar instalação? (y/n): " final_confirm
+	final_confirm=$(confirm "Confirmar e iniciar instalação?")
 	if [[ ! "$final_confirm" =~ ^[yY]$ ]]; then
 		echo -e "${VERMELHO}❌ Operação cancelada.${NC}"
 		exit 0

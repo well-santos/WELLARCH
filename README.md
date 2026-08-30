@@ -1,4 +1,4 @@
-# WELLARCH v15.1.0
+# WELLARCH
 
 Automação, pós-instalação e otimização para Arch Linux.
 
@@ -167,7 +167,7 @@ Antes da execução, o script apresenta um **menu interativo** com 5 perguntas:
 Escolha quais apps deseja instalar:
 - ZapZap (WhatsApp)
 - Telegram
-- Equibop
+- Vesktop
 - Easy Effects
 - Ignition
 - Brave Browser
