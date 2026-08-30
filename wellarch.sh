@@ -570,6 +570,7 @@ while [ $# -gt 0 ]; do
 		;;
 	--dry-run)
 		DRY_RUN=true
+		ASSUME_YES=true
 		shift
 		;;
 	--yes | -y)
