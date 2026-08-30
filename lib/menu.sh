@@ -55,7 +55,7 @@ menu_multiselect() {
 		return 0
 	fi
 
-	# Usa sempre o fallback com setas e checkboxes (sem fzf que tem campo de busca)
+	# Usa fallback com setas e checkboxes (sem fzf, sem whiptail)
 	_menu_multiselect_fallback "$prompt" "${options[@]}"
 }
 
