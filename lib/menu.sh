@@ -184,18 +184,13 @@ _menu_multiselect_fallback() {
 		echo -e "  ${VERDE}ENTER${NC}    = Confirmar"
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-		# Lê input de forma robusta
-		local old_stty
-		old_stty=$(stty -g 2>/dev/null) || true
-		stty -echo -icanon time 0 2>/dev/null || true
-
+		# Lê input com read (mais portável que dd)
 		local key
-		key=$(dd bs=1 count=1 2>/dev/null) || key=""
-
-		stty "$old_stty" 2>/dev/null || true
+		# Desabilita canonical mode e echo
+		read -rsN1 key
 
 		# Trata Enter
-		if [[ "$key" == $'\n' || "$key" == $'\r' || -z "$key" ]]; then
+		if [[ -z "$key" ]]; then
 			local result=""
 			for i in "${!options[@]}"; do
 				if [[ ${selected[$i]} -eq 1 ]]; then
@@ -206,16 +201,16 @@ _menu_multiselect_fallback() {
 			return 0
 
 		# Trata Espaço (ASCII 32)
-		elif [[ "$key" == $' ' ]] || [[ $(printf '%d' "'$key" 2>/dev/null) == 32 ]]; then
+		elif [[ "$key" == $' ' ]]; then
 			selected[$current]=$((1 - selected[$current]))
 
 		# Trata setas (ESC)
 		elif [[ "$key" == $'\x1b' ]]; then
-			old_stty=$(stty -g 2>/dev/null) || true
-			stty -echo -icanon time 0 2>/dev/null || true
-			local seq
-			seq=$(dd bs=1 count=2 2>/dev/null) || seq=""
-			stty "$old_stty" 2>/dev/null || true
+			# Lê os próximos 2 caracteres da sequência de seta
+			local seq=""
+			read -rsN1 -t 0.1 seq || true
+			read -rsN1 -t 0.1 seq2 || true
+			seq="$seq$seq2"
 
 			case "$seq" in
 			"[A") # Seta para cima
