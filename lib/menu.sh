@@ -9,9 +9,9 @@
 # Não redefinir aqui para evitar conflitos com readonly
 
 # ==============================================================================
-# Menu de seleção única com fzf ou fallback
+# Menu de seleção única - versão simples e estável
 # ==============================================================================
-# Uso: menu_select "prompt" "opção1" "opção2" ... "opção_padrão"
+# Uso: menu_select "prompt" "opção_padrão" "opção1" "opção2" ...
 menu_select() {
 	local prompt="$1"
 	shift
@@ -19,210 +19,127 @@ menu_select() {
 	shift
 	local options=("$@")
 
-	# Se ASSUME_YES está ativo, retorna padrão
 	if [[ "${ASSUME_YES:-false}" == true ]]; then
 		echo "$default_option"
 		return 0
 	fi
 
-	# Tenta usar fzf se disponível
-	if command -v fzf &>/dev/null; then
-		local result=$(printf '%s\n' "${options[@]}" | fzf --height 10 --border --preview-window=hidden --header "$prompt" --no-info)
-		if [ -n "$result" ]; then
-			echo "$result"
-		else
-			echo "$default_option"
-		fi
-	else
-		# Fallback: menu com setas
-		_menu_select_fallback "$prompt" "$default_option" "${options[@]}"
+	if [[ ! -t 0 ]]; then
+		echo "$default_option"
+		return 0
 	fi
+
+	local choice
+	while true; do
+		clear
+		echo -e "${AMARELO}${prompt}${NC}"
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+		echo ""
+		for i in "${!options[@]}"; do
+			local num=$((i + 1))
+			if [[ "${options[$i]}" == "$default_option" ]]; then
+				echo -e "  ${VERDE}${num}) ${options[$i]}${NC}  (padrão)"
+			else
+				echo -e "  ${num}) ${options[$i]}"
+			fi
+		done
+	
+echo ""
+		read -r -p "Escolha uma opção [${default_option}]: " choice
+		choice="${choice:-$default_option}"
+
+		if [[ "$choice" =~ ^[0-9]+$ ]]; then
+			if (( choice >= 1 && choice <= ${#options[@]} )); then
+				echo "${options[$((choice - 1))]}"
+				return 0
+			fi
+		fi
+
+		# Aceita também a string literal da opção caso o usuário digite o nome
+		for opt in "${options[@]}"; do
+			if [[ "$choice" == "$opt" ]]; then
+				echo "$opt"
+				return 0
+			fi
+		done
+
+		echo -e "${VERMELHO}Opção inválida. Tente novamente.${NC}"
+	done
 }
 
 # ==============================================================================
-# Menu de seleção múltipla com fzf ou fallback
+# Menu de seleção múltipla - versão simples e estável
 # ==============================================================================
-# Uso: menu_multiselect "prompt" "opção1" "opção2" ... 
-# Retorna: espaço separado de opções selecionadas
+# Uso: menu_multiselect "prompt" "opção1" "opção2" ...
+# Retorna: opções selecionadas em uma linha separada por espaço
 menu_multiselect() {
 	local prompt="$1"
 	shift
 	local options=("$@")
 
-	# Se ASSUME_YES está ativo, retorna todas
 	if [[ "${ASSUME_YES:-false}" == true ]]; then
 		echo "${options[@]}"
 		return 0
 	fi
 
-	# Usa fallback com setas e checkboxes (sem fzf, sem whiptail)
-	_menu_multiselect_fallback "$prompt" "${options[@]}"
-}
-
-# ==============================================================================
-# FALLBACK: Menu de seleção única com setas
-# ==============================================================================
-_menu_select_fallback() {
-	local prompt="$1"
-	local default_option="$2"
-	shift 2
-	local options=("$@")
-	local selected=0
-	local i
-	local old_stty
-
-	# Encontra índice da opção padrão
-	for i in "${!options[@]}"; do
-		if [[ "${options[$i]}" == "$default_option" ]]; then
-			selected=$i
-			break
-		fi
-	done
-
-	# Salva estado do terminal
-	old_stty=$(stty -g 2>/dev/null) || true
-
-	# Configura terminal para modo raw
-	stty -echo -icanon time 0 2>/dev/null || true
-
-	while true; do
-		clear
-		echo -e "${AMARELO}$prompt${NC}"
-		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	if [[ ! -t 0 ]]; then
 		echo ""
+		return 0
+	fi
 
-		for i in "${!options[@]}"; do
-			if [[ $i -eq $selected ]]; then
-				echo -e "${VERDE}▶ ${options[$i]}${NC}"
-			else
-				echo -e "  ${options[$i]}"
-			fi
-		done
-
-		echo ""
-		echo -e "${AZUL}Use ↑↓ para navegar e Enter para confirmar${NC}"
-		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-		# Lê input com dd (mais confiável)
-		local key
-		key=$(dd bs=1 count=1 2>/dev/null) || key=""
-
-		if [[ "$key" == $'\n' || "$key" == $'\r' ]]; then
-			# Enter pressionado
-			stty "$old_stty" 2>/dev/null || true
-			echo "${options[$selected]}"
-			return 0
-		elif [[ "$key" == $'\x1b' ]]; then
-			# Sequência de escape (setas)
-			local seq
-			seq=$(dd bs=1 count=2 2>/dev/null) || seq=""
-			case "$seq" in
-			"[A") # Seta para cima
-				((selected--))
-				[[ $selected -lt 0 ]] && selected=$((${#options[@]} - 1))
-				;;
-			"[B") # Seta para baixo
-				((selected++))
-				[[ $selected -ge ${#options[@]} ]] && selected=0
-				;;
-			esac
-		fi
-	done
-	stty "$old_stty" 2>/dev/null || true
-}
-
-# ==============================================================================
-# FALLBACK: Menu de seleção múltipla com checkboxes (Simples & Robusto)
-# ==============================================================================
-_menu_multiselect_fallback() {
-	local prompt="$1"
-	shift
-	local options=("$@")
 	local selected=()
-	local current=0
-	local i
-
-	# Inicializa todos como deselecionados
-	for i in "${!options[@]}"; do
-		selected[$i]=0
-	done
-
+	local input=""
+	local choice
 	while true; do
 		clear
-		echo -e "${AMARELO}$prompt${NC}"
+		echo -e "${AMARELO}${prompt}${NC}"
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 		echo ""
-
-		# Mostra opções com checkboxes
 		for i in "${!options[@]}"; do
-			if [[ $i -eq $current ]]; then
-				if [[ ${selected[$i]} -eq 1 ]]; then
-					echo -e "${VERDE}▶ [✓] ${options[$i]}${NC}"
-				else
-					echo -e "${VERDE}▶ [ ] ${options[$i]}${NC}"
-				fi
-			else
-				if [[ ${selected[$i]} -eq 1 ]]; then
-					echo -e "  ${VERDE}[✓]${NC} ${options[$i]}"
-				else
-					echo -e "  [ ] ${options[$i]}"
-				fi
-			fi
-		done
-
-		local count=0
-		for s in "${selected[@]}"; do
-			[[ $s -eq 1 ]] && ((count++))
-		done
-
-		echo ""
-		echo -e "${AZUL}Selecionado(s): ${VERDE}$count${AZUL}${NC}"
-		echo ""
-		echo -e "${AMARELO}Controles:${NC}"
-		echo -e "  ${VERDE}↑↓${NC}      = Navegar"
-		echo -e "  ${VERDE}ESPAÇO${NC}   = Marcar/desmarcar"
-		echo -e "  ${VERDE}ENTER${NC}    = Confirmar"
-		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-		# Lê input com read (mais portável que dd)
-		local key
-		# Desabilita canonical mode e echo
-		read -rsN1 key
-
-		# Trata Enter
-		if [[ -z "$key" ]]; then
-			local result=""
-			for i in "${!options[@]}"; do
-				if [[ ${selected[$i]} -eq 1 ]]; then
-					result+="${options[$i]} "
+			local num=$((i + 1))
+			local marked="[ ]"
+			for sel in "${selected[@]}"; do
+				if [[ "$sel" == "${options[$i]}" ]]; then
+					marked="[✓]"
+					break
 				fi
 			done
-			echo "${result% }"
-			return 0
+			echo -e "  ${VERDE}${num})${NC} ${marked} ${options[$i]}"
+		done
+	
+echo ""
+		echo -e "${AZUL}Digite os números separados por espaço e pressione Enter.${NC}"
+		echo -e "${AZUL}Exemplo: 1 3 5   ou   0 para confirmar sem seleção${NC}"
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+		read -r -p "Seleção: " input
 
-		# Trata Espaço (ASCII 32)
-		elif [[ "$key" == $' ' ]]; then
-			selected[$current]=$((1 - selected[$current]))
-
-		# Trata setas (ESC)
-		elif [[ "$key" == $'\x1b' ]]; then
-			# Lê os próximos 2 caracteres da sequência de seta
-			local seq=""
-			read -rsN1 -t 0.1 seq || true
-			read -rsN1 -t 0.1 seq2 || true
-			seq="$seq$seq2"
-
-			case "$seq" in
-			"[A") # Seta para cima
-				((current--))
-				[[ $current -lt 0 ]] && current=$((${#options[@]} - 1))
-				;;
-			"[B") # Seta para baixo
-				((current++))
-				[[ $current -ge ${#options[@]} ]] && current=0
-				;;
-			esac
+		if [[ -z "$input" ]]; then
+			if [[ ${#selected[@]} -gt 0 ]]; then
+				echo "${selected[@]}"
+				return 0
+			fi
+			continue
 		fi
+
+		if [[ "$input" == "0" ]]; then
+			echo ""
+			return 0
+		fi
+
+		selected=()
+		for choice in $input; do
+			if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#options[@]} )); then
+				selected+=("${options[$((choice - 1))]}")
+			fi
+		done
+	
+		# Se pelo menos uma opção foi selecionada, confirma
+		if [[ ${#selected[@]} -gt 0 ]]; then
+			echo "${selected[@]}"
+			return 0
+		fi
+	
+echo -e "${VERMELHO}Nenhuma opção válida foi escolhida.${NC}"
 	done
 }
 
@@ -268,5 +185,3 @@ export -f menu_select
 export -f menu_multiselect
 export -f prompt_choice
 export -f confirm
-export -f _menu_select_fallback
-export -f _menu_multiselect_fallback
