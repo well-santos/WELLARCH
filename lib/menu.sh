@@ -18,6 +18,20 @@ menu_select() {
 	local default_option="$1"
 	shift
 	local options=("$@")
+	local cleaned=()
+	local seen_default=0
+	local item
+
+	for item in "${options[@]}"; do
+		if [[ "$item" == "$default_option" && "$seen_default" -eq 1 ]]; then
+			continue
+		fi
+		if [[ "$item" == "$default_option" ]]; then
+			seen_default=1
+		fi
+		cleaned+=("$item")
+	done
+	options=("${cleaned[@]}")
 
 	if [[ "${ASSUME_YES:-false}" == true ]]; then
 		echo "$default_option"
@@ -31,22 +45,23 @@ menu_select() {
 
 	local choice
 	while true; do
-		clear
 		echo -e "${AMARELO}${prompt}${NC}"
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 		echo ""
 		for i in "${!options[@]}"; do
 			local num=$((i + 1))
 			if [[ "${options[$i]}" == "$default_option" ]]; then
-				echo -e "  ${VERDE}${num}) ${options[$i]}${NC}  (padrão)"
+				echo -e "  ${VERDE}[${num}]${NC} ${options[$i]} ${AMARELO}(padrão)${NC}"
 			else
-				echo -e "  ${num}) ${options[$i]}"
+				echo -e "  ${VERDE}[${num}]${NC} ${options[$i]}"
 			fi
 		done
-	
-echo ""
-		read -r -p "Escolha uma opção [${default_option}]: " choice
-		choice="${choice:-$default_option}"
+		echo ""
+		read -r -p "Escolha uma opção [1-${#options[@]}] (Enter = padrão): " choice
+		if [[ -z "$choice" ]]; then
+			echo "$default_option"
+			return 0
+		fi
 
 		if [[ "$choice" =~ ^[0-9]+$ ]]; then
 			if (( choice >= 1 && choice <= ${#options[@]} )); then
@@ -55,7 +70,6 @@ echo ""
 			fi
 		fi
 
-		# Aceita também a string literal da opção caso o usuário digite o nome
 		for opt in "${options[@]}"; do
 			if [[ "$choice" == "$opt" ]]; then
 				echo "$opt"
@@ -64,6 +78,7 @@ echo ""
 		done
 
 		echo -e "${VERMELHO}Opção inválida. Tente novamente.${NC}"
+		echo ""
 	done
 }
 
@@ -91,7 +106,6 @@ menu_multiselect() {
 	local input=""
 	local choice
 	while true; do
-		clear
 		echo -e "${AMARELO}${prompt}${NC}"
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 		echo ""
@@ -104,10 +118,9 @@ menu_multiselect() {
 					break
 				fi
 			done
-			echo -e "  ${VERDE}${num})${NC} ${marked} ${options[$i]}"
+			echo -e "  ${VERDE}[${num}]${NC} ${marked} ${options[$i]}"
 		done
-	
-echo ""
+		echo ""
 		echo -e "${AZUL}Digite os números separados por espaço e pressione Enter.${NC}"
 		echo -e "${AZUL}Exemplo: 1 3 5   ou   0 para confirmar sem seleção${NC}"
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

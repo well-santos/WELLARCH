@@ -837,7 +837,6 @@ echo "-------------------------------------------------------------"
 echo ""
 echo -e "${AMARELO}1. Qual AUR Helper você deseja?${NC}"
 aur_choice=$(menu_select "Selecione o AUR Helper" "Paru (padrão, mais rápido)" \
-	"Paru (padrão, mais rápido)" \
 	"Yay (alternativa)")
 case "$aur_choice" in
 *"Yay"*)
@@ -854,7 +853,6 @@ esac
 echo ""
 echo -e "${AMARELO}2. Qual versão do Pamac você deseja?${NC}"
 pamac_choice=$(menu_select "Selecione a versão do Pamac" "Pamac-all (com GUI + Flatpak + AUR, padrão)" \
-	"Pamac-all (com GUI + Flatpak + AUR, padrão)" \
 	"Pamac-aur (apenas CLI + AUR)")
 case "$pamac_choice" in
 *"pamac-aur"*)
@@ -871,7 +869,6 @@ esac
 echo ""
 echo -e "${AMARELO}3. Qual provedor de DNS você deseja?${NC}"
 dns_choice=$(menu_select "Selecione o provedor de DNS" "Cloudflare (padrão, 1.1.1.1) - Privacidade" \
-	"Cloudflare (padrão, 1.1.1.1) - Privacidade" \
 	"Quad9 (9.9.9.9) - Segurança" \
 	"Google (8.8.8.8) - Velocidade" \
 	"AdGuard (94.140.14.14) - Bloqueia anúncios" \
