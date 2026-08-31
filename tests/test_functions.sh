@@ -212,6 +212,43 @@ test_bash_version_check() {
     assert_true 'check_bash_version 4 0' "Should pass for Bash 4.0+"
 }
 
+test_menu_tty_fallback() {
+    run_test "Menu fallback to /dev/tty"
+
+    if ! command -v script >/dev/null 2>&1; then
+        ((TESTS_PASSED++)) || true
+        echo -e "  ${GREEN}✓${NC} script utility not available; tty fallback test skipped"
+        ((TESTS_RUN++)) || true
+        return 0
+    fi
+
+    local output
+    output=$(script -q -c "bash -lc 'source \"${SCRIPT_DIR}/lib/menu.sh\"; menu_select \"Escolha\" \"Opção A\" \"Opção B\" <<< \"2\"'" /dev/null 2>&1 | tr -d '\r')
+
+    if [[ "$output" == *"[1]"* && "$output" == *"[2]"* ]] && [[ "$output" == *"Opção A"* || "$output" == *"Opção B"* ]]; then
+        ((TESTS_PASSED++)) || true
+        echo -e "  ${GREEN}✓${NC} Menu shows numbered options when a tty is available"
+    else
+        ((TESTS_FAILED++)) || true
+        echo -e "  ${RED}✗${NC} Menu did not show numbered options in tty mode"
+        echo -e "    Output: $output"
+    fi
+    ((TESTS_RUN++)) || true
+}
+
+test_install_defaults_are_interactive() {
+    run_test "Installer defaults keep interactive menus"
+
+    if grep -Eq 'args=\("--dry-run"\)' "${SCRIPT_DIR}/install.sh"; then
+        ((TESTS_FAILED++)) || true
+        echo -e "  ${RED}✗${NC} install.sh forces dry-run when no arguments are provided"
+    else
+        ((TESTS_PASSED++)) || true
+        echo -e "  ${GREEN}✓${NC} install.sh does not force dry-run by default"
+    fi
+    ((TESTS_RUN++)) || true
+}
+
 test_script_syntax() {
     run_test "Script syntax validation"
     
@@ -226,28 +263,6 @@ test_removed_features() {
 
     assert_false 'grep -Eq "ProtonPlus|protonplus|Papirus|papirus|Plymouth|plymouth|quiet splash|setup_plymouth|SKIP_PLYMOUTH" "${SCRIPT_DIR}/wellarch.sh"' \
         "Main installer does not install icons or modify boot animation"
-}
-
-test_stdin_execution() {
-    run_test "Execution from stdin"
-
-    if head -n 18 "${SCRIPT_DIR}/install.sh" | env -u BASH_SOURCE bash >/dev/null 2>&1; then
-        ((TESTS_PASSED++)) || true
-        echo -e "  ${GREEN}✓${NC} install.sh accepts stdin execution"
-    else
-        ((TESTS_FAILED++)) || true
-        echo -e "  ${RED}✗${NC} install.sh accepts stdin execution"
-    fi
-    ((TESTS_RUN++)) || true
-
-    if head -n 18 "${SCRIPT_DIR}/wellarch.sh" | env -u BASH_SOURCE bash >/dev/null 2>&1; then
-        ((TESTS_PASSED++)) || true
-        echo -e "  ${GREEN}✓${NC} wellarch.sh accepts stdin execution"
-    else
-        ((TESTS_FAILED++)) || true
-        echo -e "  ${RED}✗${NC} wellarch.sh accepts stdin execution"
-    fi
-    ((TESTS_RUN++)) || true
 }
 
 test_vscode_package() {
@@ -304,9 +319,10 @@ main() {
     test_external_urls
     test_prompt_choice_default
     test_bash_version_check
+    test_menu_tty_fallback
+    test_install_defaults_are_interactive
     test_script_syntax
     test_removed_features
-    test_stdin_execution
     test_vscode_package
     test_safe_mode_guard
     

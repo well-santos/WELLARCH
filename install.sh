@@ -190,13 +190,13 @@ main() {
     echo ""
     
     # Prepare arguments
-    local args=("${@:-}")
+    local args=("$@")
     if [[ ${#args[@]} -eq 0 ]]; then
         log_info "💡 Dica: use 'wellarch --help' para ver opções"
-        args=("--dry-run")
+        log_info "🚀 Executando WELLARCH v15.1.0 em modo interativo..."
+    else
+        log_info "🚀 Executando WELLARCH v15.1.0..."
     fi
-    
-    log_info "🚀 Executando WELLARCH v15.1.0..."
     echo ""
     
     # Execute with correct lib directory
