@@ -42,10 +42,6 @@ menu_select() {
 	fi
 
 	local choice
-	local input_source=""
-	if [[ ! -t 0 && -e /dev/tty ]]; then
-		input_source="</dev/tty"
-	fi
 	while true; do
 		echo -e "${AMARELO}${prompt}${NC}" >&2
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
@@ -59,8 +55,8 @@ menu_select() {
 			fi
 		done
 		echo "" >&2
-		if [[ -n "$input_source" ]]; then
-			read -r -p "Escolha uma opção [1-${#options[@]}] (Enter = padrão): " choice $input_source
+		if [[ ! -t 0 && -e /dev/tty ]]; then
+			read -r -p "Escolha uma opção [1-${#options[@]}] (Enter = padrão): " choice < /dev/tty
 		else
 			read -r -p "Escolha uma opção [1-${#options[@]}] (Enter = padrão): " choice
 		fi
@@ -112,10 +108,6 @@ menu_multiselect() {
 	local input=""
 	local choice
 	local -a choices=()
-	local input_source=""
-	if [[ ! -t 0 && -e /dev/tty ]]; then
-		input_source="</dev/tty"
-	fi
 	while true; do
 		echo -e "${AMARELO}${prompt}${NC}" >&2
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
@@ -135,8 +127,8 @@ menu_multiselect() {
 		echo -e "${AZUL}Digite os números separados por espaço e pressione Enter.${NC}" >&2
 		echo -e "${AZUL}Exemplo: 1 3 5   ou   0 para confirmar sem seleção${NC}" >&2
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
-		if [[ -n "$input_source" ]]; then
-			read -r -p "Seleção: " input $input_source
+		if [[ ! -t 0 && -e /dev/tty ]]; then
+			read -r -p "Seleção: " input < /dev/tty
 		else
 			read -r -p "Seleção: " input
 		fi

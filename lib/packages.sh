@@ -29,6 +29,7 @@ wellarch_install_pamac() {
         parar_com_erro "Instalação do $PAMAC_PKG"
     fi
     INSTALLED_PACKAGES+=("Pamac")
+    record_installed_item pacman "$PAMAC_PKG"
     echo -e "${VERDE}✅ Pamac instalado!${NC}"
 }
 

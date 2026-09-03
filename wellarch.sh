@@ -186,6 +186,17 @@ backup_file() {
 		# When lib/common.sh is absent, keep track locally
 		BACKUP_FILES+=("$src|$bak")
 	fi
+
+	if ! declare -f record_installed_item >/dev/null 2>&1; then
+		record_installed_item() {
+			local type="$1"
+			local name="$2"
+			local manifest_file="${WELLARCH_MANIFEST_FILE:-$HOME/.config/wellarch/installed-manifest}"
+			mkdir -p "$(dirname "$manifest_file")"
+			grep -Fqx -- "$type|$name" "$manifest_file" 2>/dev/null || \
+				printf '%s|%s\n' "$type" "$name" >> "$manifest_file"
+		}
+	fi
 }
 
 restore_backups() {
@@ -240,6 +251,7 @@ install_pkg_preferred() {
 			if sudo_run_retry "Instalação de $display_name" pacman -S --needed "${repo}/$pkg" --noconfirm; then
 				echo -e "${VERDE}✅ $display_name instalado (${pkg})!${NC}"
 				INSTALLED_PACKAGES+=("$display_name")
+				record_installed_item pacman "$pkg"
 				return 0
 			fi
 		fi
@@ -250,6 +262,7 @@ install_pkg_preferred() {
 			if sudo_run_retry "Instalação de $display_name (Chaotic AUR)" pacman -S --needed "chaotic-aur/$pkg" --noconfirm; then
 				echo -e "${VERDE}✅ $display_name instalado (${pkg}) via Chaotic AUR!${NC}"
 				INSTALLED_PACKAGES+=("$display_name")
+				record_installed_item pacman "$pkg"
 				return 0
 			fi
 		fi

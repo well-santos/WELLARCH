@@ -19,14 +19,14 @@ help:
 
 lint:
 	@echo "Running shellcheck..."
-	@shellcheck -x wellarch.sh install.sh wellarch-remove.sh lib/common.sh tests/test_functions.sh tests/test_dry_run.sh
+	@shellcheck -x wellarch.sh install.sh wellarch-remove.sh lib/*.sh tests/*.sh
 	@echo "Running shfmt check..."
-	@shfmt -l -d wellarch.sh install.sh wellarch-remove.sh lib/common.sh || true
+	@shfmt -l -d wellarch.sh install.sh wellarch-remove.sh lib/*.sh tests/*.sh || true
 	@echo "✓ Lint complete"
 
 format:
 	@echo "Formatting with shfmt..."
-	@shfmt -w -i 0 -ci wellarch.sh install.sh wellarch-remove.sh lib/common.sh
+	@shfmt -w -i 0 -ci wellarch.sh install.sh wellarch-remove.sh lib/*.sh tests/*.sh
 	@echo "✓ Format complete"
 
 check: lint
@@ -35,6 +35,7 @@ check: lint
 	@bash -n install.sh
 	@bash -n wellarch-remove.sh
 	@bash -n lib/common.sh
+	@bash -n lib/*.sh
 	@echo "✓ Syntax check complete"
 
 test:

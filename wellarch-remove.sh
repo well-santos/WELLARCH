@@ -102,6 +102,11 @@ if ! sudo -v; then
     parar_com_erro "Acesso sudo recusado. Você precisa de privilégios sudo."
 fi
 
+MANIFEST_FILE="${WELLARCH_MANIFEST_FILE:-${HOME}/.config/wellarch/installed-manifest}"
+manifest_contains() {
+    grep -Fqx -- "$1|$2" "$MANIFEST_FILE" 2>/dev/null
+}
+
 echo -e "${AMARELO}🗑️  Iniciando remoção...${NC}"
 echo ""
 
@@ -111,13 +116,13 @@ echo ""
 
 # 1. Remover Paru ou Yay
 echo -e "${AZUL}1. Removendo AUR Helper...${NC}"
-if is_installed paru; then
+if manifest_contains pacman paru && is_installed paru; then
     echo "   Removendo Paru..."
     sudo pacman -Rns paru --noconfirm || true
     echo -e "   ${VERDE}✓ Paru removido${NC}"
 fi
 
-if is_installed yay; then
+if manifest_contains pacman yay && is_installed yay; then
     echo "   Removendo Yay..."
     sudo pacman -Rns yay --noconfirm || true
     echo -e "   ${VERDE}✓ Yay removido${NC}"
@@ -126,7 +131,7 @@ echo ""
 
 # 2. Remover Chaotic AUR
 echo -e "${AZUL}2. Removendo Chaotic AUR...${NC}"
-if grep -q "chaotic-aur" /etc/pacman.conf; then
+if manifest_contains config chaotic-aur && grep -q "chaotic-aur" /etc/pacman.conf; then
     echo "   Removendo entrada Chaotic AUR de /etc/pacman.conf..."
     sudo sed -i '/\[chaotic-aur\]/,/^$/d' /etc/pacman.conf
     sudo sed -i '/chaotic-mirrorlist/d' /etc/pacman.conf
@@ -135,10 +140,9 @@ if grep -q "chaotic-aur" /etc/pacman.conf; then
     sudo pacman-key --delete 3056513887B78AEB 2>/dev/null || true
     sudo pacman -Rns chaotic-keyring chaotic-mirrorlist 2>/dev/null || true
     
-    sudo pacman -Sy --noconfirm
     echo -e "   ${VERDE}✓ Chaotic AUR removido${NC}"
 else
-    echo -e "   ℹ️  Chaotic AUR não encontrado"
+    echo -e "   ℹ️  Chaotic AUR não foi instalado pelo WELLARCH"
 fi
 echo ""
 
@@ -160,9 +164,12 @@ echo ""
 
 # 4. Remover Pamac
 echo -e "${AZUL}4. Removendo Pamac...${NC}"
-if is_installed pamac; then
+if manifest_contains pacman pamac-all || manifest_contains pacman pamac-aur; then
     echo "   Removendo Pamac..."
-    sudo pacman -Rns pamac-all pamac-aur --noconfirm 2>/dev/null || true
+    packages_to_remove=()
+    manifest_contains pacman pamac-all && packages_to_remove+=(pamac-all)
+    manifest_contains pacman pamac-aur && packages_to_remove+=(pamac-aur)
+    ((${#packages_to_remove[@]} > 0)) && sudo pacman -Rns "${packages_to_remove[@]}" --noconfirm 2>/dev/null || true
     echo -e "   ${VERDE}✓ Pamac removido${NC}"
 else
     echo -e "   ℹ️  Pamac não está instalado"
@@ -183,7 +190,7 @@ EXTRA_PKGS=(
 )
 REMOVED_EXTRA=false
 for pkg in "${EXTRA_PKGS[@]}"; do
-    if is_pkg_installed "$pkg"; then
+    if manifest_contains pacman "$pkg" && is_pkg_installed "$pkg"; then
         echo "   Removendo $pkg..."
         sudo pacman -Rns "$pkg" --noconfirm 2>/dev/null || true
         REMOVED_EXTRA=true
@@ -198,11 +205,16 @@ echo ""
 
 # 6. Remover Flatpak
 echo -e "${AZUL}6. Removendo Flatpak e aplicativos...${NC}"
-if is_installed flatpak; then
-    echo "   Removendo Flatpak..."
-    flatpak uninstall --all -y 2>/dev/null || true
-    sudo pacman -Rns flatpak --noconfirm || true
-    echo -e "   ${VERDE}✓ Flatpak removido${NC}"
+if manifest_contains pacman flatpak || grep -q '^flatpak|' "$MANIFEST_FILE" 2>/dev/null; then
+    while IFS='|' read -r type app; do
+        if [[ "$type" == flatpak && -n "$app" ]]; then
+            flatpak uninstall "$app" -y 2>/dev/null || true
+        fi
+    done < "$MANIFEST_FILE"
+    if manifest_contains pacman flatpak; then
+        sudo pacman -Rns flatpak --noconfirm || true
+    fi
+    echo -e "   ${VERDE}✓ Itens Flatpak removidos${NC}"
 else
     echo -e "   ℹ️  Flatpak não está instalado"
 fi
@@ -249,8 +261,7 @@ echo ""
 # 9. Limpeza final
 echo -e "${AZUL}9. Limpeza final...${NC}"
 echo "   Atualizando repositórios..."
-sudo pacman -Sy --noconfirm > /dev/null
-echo -e "   ${VERDE}✓ Repositórios atualizados${NC}"
+echo -e "   ${VERDE}✓ Limpeza final concluída${NC}"
 
 # Remover diretório de configuração WELLARCH
 if [ -d "${HOME}/.config/wellarch" ]; then
@@ -268,6 +279,9 @@ if [ -d "${HOME}/.cache/wellarch" ]; then
         rm -rf "${HOME}/.cache/wellarch"
         echo -e "   ${VERDE}✓ Cache removido${NC}"
     fi
+fi
+if [[ -f "$MANIFEST_FILE" ]]; then
+    rm -f "$MANIFEST_FILE"
 fi
 echo ""
 

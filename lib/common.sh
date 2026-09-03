@@ -21,7 +21,9 @@ readonly CHAOTIC_KEYSERVER="keyserver.ubuntu.com"
 readonly CHAOTIC_KEYRING_URL="https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst"
 readonly CHAOTIC_MIRRORLIST_URL="https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst"
 readonly LINUXTOYS_URL="https://linux.toys/install.sh"
-readonly OHMYZSH_INSTALL_URL="https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh"
+readonly OHMYZSH_INSTALL_URL="https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/9112b53fa8b5ab556c7c893aa8be8a247ac512a0/tools/install.sh"
+readonly OHMYZSH_SHA256="5b16896b831243ebd2f409ecd99c3d231385cc706fbc564625057929ebee5e6e"
+readonly LINUXTOYS_SHA256="9ead4c13e02346481ec4ed3734b607e4a5c41f51223293cc9f6523a7b7ab963d"
 
 # DNS Providers (associative array for use by sourcing scripts)
 declare -A DNS_PROVIDERS=(
@@ -36,6 +38,7 @@ readonly WELLARCH_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/wellarch"
 readonly WELLARCH_CONFIG_FILE="${WELLARCH_CONFIG_DIR}/config"
 readonly WELLARCH_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/wellarch"
 readonly WELLARCH_LOG_FILE="${WELLARCH_CACHE_DIR}/wellarch.log"
+readonly WELLARCH_MANIFEST_FILE="${WELLARCH_CONFIG_DIR}/installed-manifest"
 
 # ==============================================================================
 # COLOR DEFINITIONS
@@ -126,6 +129,50 @@ log_error() {
 log_success() {
     echo -e "${GREEN}✅ $*${NC}"
     log_to_file "[SUCCESS] $*"
+}
+
+record_installed_item() {
+    local type="$1"
+    local name="$2"
+    mkdir -p "$(dirname "$WELLARCH_MANIFEST_FILE")"
+    grep -Fqx -- "$type|$name" "$WELLARCH_MANIFEST_FILE" 2>/dev/null || \
+        printf '%s|%s\n' "$type" "$name" >> "$WELLARCH_MANIFEST_FILE"
+}
+
+run_quiet_with_progress() {
+    local label="$1"
+    shift
+    local pid
+    local key
+    local frame=0
+
+    "$@" >>"$WELLARCH_LOG_FILE" 2>&1 &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        if [[ "${VERBOSE:-false}" != true && -t 0 && -t 1 ]]; then
+            if read -r -t 0.1 -n 1 key; then
+                if [[ "$key" =~ [vV] ]]; then
+                    VERBOSE=true
+                    printf '\nDetalhes ativados. Log: %s\n' "$WELLARCH_LOG_FILE"
+                fi
+            fi
+        fi
+
+        if [[ "${VERBOSE:-false}" == true ]]; then
+            tail -n 1 "$WELLARCH_LOG_FILE" 2>/dev/null || true
+        else
+            frame=$(( (frame + 1) % 4 ))
+            case "$frame" in
+                1) printf '\r%s.  ' "$label" ;;
+                2) printf '\r%s.. ' "$label" ;;
+                3) printf '\r%s... ' "$label" ;;
+                *) printf '\r%s    ' "$label" ;;
+            esac
+        fi
+        sleep 1
+    done
+    wait "$pid"
+    printf '\r%-80s\r' ""
 }
 
 # ==============================================================================

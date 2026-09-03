@@ -31,8 +31,8 @@ log_warn() { echo -e "${AMARELO}⚠️  $*${NC}" >&2; }
 
 # Configuration
 GITHUB_REPO="well-santos/WELLARCH"
-GITHUB_BRANCH="main"
-GITHUB_RAW_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}"
+GITHUB_COMMIT="${WELLARCH_COMMIT:-8270e514a7a6acf74b90215abd8027c2e2538e01}"
+GITHUB_RAW_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_COMMIT}"
 INSTALL_DIR="${WELLARCH_INSTALL_DIR:-$HOME/.local/wellarch}"
 
 # Cleanup on exit
@@ -109,7 +109,8 @@ download_with_curl() {
         if ! curl -fsSL --max-time 20 \
             -o "$output_dir/lib/$lib" \
             "${GITHUB_RAW_URL}/lib/$lib" 2>/dev/null; then
-            log_warn "Não foi possível baixar lib/$lib (pode causar erros)"
+            log_error "Não foi possível baixar lib/$lib"
+            return 1
         fi
     done
     chmod +x "$output_dir/lib"/*.sh 2>/dev/null || true
@@ -126,8 +127,10 @@ download_with_git() {
     
     mkdir -p "$(dirname "$output_dir")"
     
-    if git clone --depth 1 --branch "$GITHUB_BRANCH" \
-        "https://github.com/${GITHUB_REPO}.git" "$output_dir" 2>/dev/null; then
+    if git init -q "$output_dir" && \
+        git -C "$output_dir" remote add origin "https://github.com/${GITHUB_REPO}.git" && \
+        git -C "$output_dir" fetch -q --depth 1 origin "$GITHUB_COMMIT" && \
+        git -C "$output_dir" checkout -q --detach FETCH_HEAD; then
         log_success "Repositório clonado com sucesso"
         chmod +x "$output_dir"/wellarch.sh
         chmod +x "$output_dir"/lib/*.sh 2>/dev/null || true
@@ -184,6 +187,14 @@ main() {
         log_error "pasta lib/ ou lib/common.sh não encontrada em $INSTALL_DIR"
         exit 1
     fi
+
+    local required_lib
+    for required_lib in common.sh menu.sh system.sh steps.sh aur.sh mirrors.sh flatpak.sh packages.sh dns.sh system_setup.sh linuxtoys.sh; do
+        if [[ ! -s "$INSTALL_DIR/lib/$required_lib" ]]; then
+            log_error "Biblioteca obrigatória ausente ou vazia: lib/$required_lib"
+            exit 1
+        fi
+    done
     
     log_success "Estrutura validada"
     echo ""

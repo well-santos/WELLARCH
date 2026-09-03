@@ -35,8 +35,9 @@ wellarch_setup_reflector() {
             echo -e "${AMARELO}⚠️ Falha ao executar reflector com país Brasil; mantendo mirrorlist atual.${NC}"
             return 0
         fi
-        sudo_run_retry "Atualização de mirrors (pacman -Syy)" pacman -Syy --noconfirm || true
+        sudo_run_retry "Atualização de mirrors (pacman -Syu)" pacman -Syu --noconfirm || true
         echo -e "${VERDE}✅ Mirrors otimizados!${NC}"
         INSTALLED_PACKAGES+=("Reflector")
+        record_installed_item pacman reflector
     fi
 }

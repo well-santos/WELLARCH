@@ -63,12 +63,14 @@ wellarch_install_linuxtoys() {
             return 1
         fi
     else
-        echo -e "${AMARELO}⚠️ Sem LINUXTOYS_SHA256 definido; executando sem verificação de integridade.${NC}"
+        echo -e "${VERMELHO}❌ LINUXTOYS_SHA256 não definido; recusando execução.${NC}"
+        FAILED_ITEMS+=("LinuxToys (checksum ausente)")
+        return 1
     fi
 
     # Executar o instalador
     if [[ "$ASSUME_YES" == true ]]; then
-        if bash "$lt_script"; then
+        if run_quiet_with_progress "Instalando LinuxToys" bash "$lt_script"; then
             lt_ok=true
         fi
     else

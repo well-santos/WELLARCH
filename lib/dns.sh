@@ -66,17 +66,15 @@ EOF
         fi
 
         if [[ -L "$RESOLV_CONF" ]]; then
-            echo "   ℹ️  resolv.conf é symlink; substituindo por arquivo gerenciado pelo WELLARCH."
-            sudo_run rm -f "$RESOLV_CONF"
+            echo "   ℹ️  resolv.conf é gerenciado pelo sistema; mantendo o symlink."
+        else
+            sudo_run rm -f "$RESOLV_CONF" || true
+            for server in "${SERVERS[@]}"; do
+                printf "nameserver %s\n" "$server" | sudo_run tee -a "$RESOLV_CONF" >/dev/null
+            done
         fi
 
-        sudo_run rm -f "$RESOLV_CONF" || true
-
-        for server in "${SERVERS[@]}"; do
-            printf "nameserver %s\n" "$server" | sudo_run tee -a "$RESOLV_CONF" >/dev/null
-        done
-
-        if [[ "$FORCE_RESOLV_LOCK" == true ]]; then
+        if [[ "$FORCE_RESOLV_LOCK" == true && ! -L "$RESOLV_CONF" ]]; then
             echo "   🔒 Travando resolv.conf (opção forçada)."
             sudo_run chattr +i "$RESOLV_CONF"
         else

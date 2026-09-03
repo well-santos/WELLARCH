@@ -71,7 +71,7 @@ Esta é a forma mais simples e segura. O script:
 - Baixa a versão mais recente do GitHub
 - Executa imediatamente sem necessidade de clonar o repositório
  
-Observação de integridade: o instalador primeiro tenta verificar uma **assinatura GPG** (`wellarch.sh.sig`) situada ao lado do script. Se a assinatura GPG não estiver disponível, o instalador tentará validar um arquivo SHA256 (`wellarch.sh.sha256`). Caso nenhuma verificação esteja disponível, a execução continua, mas isso reduz a segurança.
+Observação de integridade: depois do bootstrap inicial, o instalador baixa o WELLARCH de um commit fixo. Os instaladores externos de Oh My Zsh e LinuxToys também usam referências fixas e SHA-256; se a verificação falhar ou não estiver configurada, a execução é recusada.
 
 Para ativar a verificação GPG automática, publique a chave pública ASCII-armored em um caminho raw do GitHub (ex.: `pubkey.asc`) e exporte a variável `GPG_PUBKEY_URL` antes de executar o instalador. Exemplo:
 

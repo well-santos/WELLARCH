@@ -16,8 +16,18 @@ wellarch_configure_oh_my_zsh() {
 
     if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
         echo "🌀 Instalando Oh My Zsh..."
-        RUNZSH=no CHSH=no KEEP_ZSHRC=yes \
-            bash -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" || true
+        local ohmyzsh_script
+        ohmyzsh_script=$(mktemp)
+        if run_with_retry "Download do Oh My Zsh" curl -fsSL --max-time "${DOWNLOAD_TIMEOUT}" \
+            -o "$ohmyzsh_script" "$OHMYZSH_INSTALL_URL" && \
+            echo "${OHMYZSH_SHA256}  $ohmyzsh_script" | sha256sum -c --status 2>/dev/null && \
+            RUNZSH=no CHSH=no KEEP_ZSHRC=yes run_quiet_with_progress "Instalando Oh My Zsh" bash "$ohmyzsh_script"; then
+            rm -f "$ohmyzsh_script"
+        else
+            rm -f "$ohmyzsh_script"
+            FAILED_ITEMS+=("Oh My Zsh")
+            echo -e "${AMARELO}⚠️ Falha ao baixar, validar ou instalar Oh My Zsh.${NC}"
+        fi
     else
         echo "✅ Oh My Zsh já instalado."
     fi

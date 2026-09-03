@@ -26,9 +26,12 @@ wellarch_setup_chaotic_aur() {
         parar_com_erro "Configuração do Chaotic AUR (pacman -U)"
     fi
     echo -e "\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist" | sudo_run tee -a /etc/pacman.conf >/dev/null
-    if ! sudo_run_retry "Configuração do Chaotic AUR (pacman -Sy)" pacman -Sy --noconfirm; then
-        parar_com_erro "Configuração do Chaotic AUR (pacman -Sy)"
+    record_installed_item config chaotic-aur
+    if ! sudo_run_retry "Configuração do Chaotic AUR (pacman -Syu)" pacman -Syu --noconfirm; then
+        parar_com_erro "Configuração do Chaotic AUR (pacman -Syu)"
     fi
+    record_installed_item pacman chaotic-keyring
+    record_installed_item pacman chaotic-mirrorlist
     echo -e "${VERDE}✅ Chaotic AUR configurado!${NC}"
     INSTALLED_PACKAGES+=("Chaotic AUR")
 }
@@ -48,6 +51,7 @@ wellarch_install_aur_helper() {
     if sudo_run_retry "Instalação do $AUR_HELPER (pacman)" pacman -S "$AUR_HELPER" --noconfirm 2>/dev/null; then
         echo -e "${VERDE}✅ $AUR_HELPER instalado via repositório!${NC}"
         INSTALLED_PACKAGES+=("$AUR_HELPER")
+        record_installed_item pacman "$AUR_HELPER"
         return 0
     fi
 
@@ -67,7 +71,7 @@ wellarch_install_aur_helper() {
     if [[ "${DRY_RUN:-false}" == true ]]; then
         echo -e "${AMARELO}(dry-run) pulando makepkg para $AUR_HELPER${NC}"
     else
-        if ! makepkg -si --noconfirm; then
+        if ! run_quiet_with_progress "Compilando $AUR_HELPER" makepkg -si --noconfirm; then
             popd >/dev/null
             parar_com_erro "Instalação do $AUR_HELPER (makepkg)"
         fi
@@ -80,4 +84,5 @@ wellarch_install_aur_helper() {
     TMP_DIRS=()
     echo -e "${VERDE}✅ $AUR_HELPER instalado via AUR!${NC}"
     INSTALLED_PACKAGES+=("$AUR_HELPER")
+    record_installed_item pacman "$AUR_HELPER"
 }
