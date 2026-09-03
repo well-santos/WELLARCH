@@ -49,18 +49,18 @@ menu_select() {
 		input_source="</dev/tty"
 	fi
 	while true; do
-		echo -e "${AMARELO}${prompt}${NC}"
-		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-		echo ""
+		echo -e "${AMARELO}${prompt}${NC}" >&2
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+		echo "" >&2
 		for i in "${!options[@]}"; do
 			local num=$((i + 1))
 			if [[ "${options[$i]}" == "$default_option" ]]; then
-				echo -e "  ${VERDE}[${num}]${NC} ${options[$i]} ${AMARELO}(padrão)${NC}"
+				echo -e "  ${VERDE}[${num}]${NC} ${options[$i]} ${AMARELO}(padrão)${NC}" >&2
 			else
-				echo -e "  ${VERDE}[${num}]${NC} ${options[$i]}"
+				echo -e "  ${VERDE}[${num}]${NC} ${options[$i]}" >&2
 			fi
 		done
-		echo ""
+		echo "" >&2
 		if [[ -n "$input_source" ]]; then
 			read -r -p "Escolha uma opção [1-${#options[@]}] (Enter = padrão): " choice $input_source
 		else
@@ -85,8 +85,8 @@ menu_select() {
 			fi
 		done
 
-		echo -e "${VERMELHO}Opção inválida. Tente novamente.${NC}"
-		echo ""
+		echo -e "${VERMELHO}Opção inválida. Tente novamente.${NC}" >&2
+		echo "" >&2
 	done
 }
 
@@ -118,9 +118,9 @@ menu_multiselect() {
 		input_source="</dev/tty"
 	fi
 	while true; do
-		echo -e "${AMARELO}${prompt}${NC}"
-		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-		echo ""
+		echo -e "${AMARELO}${prompt}${NC}" >&2
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+		echo "" >&2
 		for i in "${!options[@]}"; do
 			local num=$((i + 1))
 			local marked="[ ]"
@@ -130,12 +130,12 @@ menu_multiselect() {
 					break
 				fi
 			done
-			echo -e "  ${VERDE}[${num}]${NC} ${marked} ${options[$i]}"
+			echo -e "  ${VERDE}[${num}]${NC} ${marked} ${options[$i]}" >&2
 		done
-		echo ""
-		echo -e "${AZUL}Digite os números separados por espaço e pressione Enter.${NC}"
-		echo -e "${AZUL}Exemplo: 1 3 5   ou   0 para confirmar sem seleção${NC}"
-		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+		echo "" >&2
+		echo -e "${AZUL}Digite os números separados por espaço e pressione Enter.${NC}" >&2
+		echo -e "${AZUL}Exemplo: 1 3 5   ou   0 para confirmar sem seleção${NC}" >&2
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
 		if [[ -n "$input_source" ]]; then
 			read -r -p "Seleção: " input $input_source
 		else
@@ -168,7 +168,7 @@ menu_multiselect() {
 			return 0
 		fi
 	
-echo -e "${VERMELHO}Nenhuma opção válida foi escolhida.${NC}"
+	echo -e "${VERMELHO}Nenhuma opção válida foi escolhida.${NC}" >&2
 	done
 }
 

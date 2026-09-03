@@ -14,7 +14,7 @@ cd ~/Documentos/WELLARCH
 
 ### Opção A: Teste da Interface (Recomendado ⭐)
 ```bash
-./teste-menus.sh
+bash tests/test_functions.sh
 ```
 ✅ Testa todos os 4 tipos de menu  
 ✅ Funciona com ou sem fzf  
@@ -30,7 +30,7 @@ cd ~/Documentos/WELLARCH
 
 ### Opção C: Teste Silencioso (Defaults)
 ```bash
-./teste-menus.sh  # Vê as opções que serão usadas
+bash tests/test_functions.sh  # Executa a suíte automatizada
 # ou com defaults automáticos
 ./wellarch.sh --dry-run --yes
 ```
@@ -71,9 +71,9 @@ Use ↑↓ para navegar e Enter para confirmar
 ## ✅ Checklist de Teste
 
 - [ ] Instalar fzf: `sudo dnf install fzf`
-- [ ] Executar: `./teste-menus.sh`
-- [ ] Navegar com setas ↑↓ 
-- [ ] Selecionar com Enter (único) ou Espaço (múltiplo)
+- [ ] Executar: `bash tests/test_functions.sh`
+- [ ] Conferir as opções numeradas
+- [ ] Selecionar digitando o número e pressionando Enter
 - [ ] Ver resumo final com ✅
 - [ ] Documentar qualquer problema
 
@@ -83,7 +83,7 @@ Use ↑↓ para navegar e Enter para confirmar
 
 | Problema | Solução |
 |----------|---------|
-| `command not found: ./teste-menus.sh` | `chmod +x teste-menus.sh` |
+| `tests/test_functions.sh` não executa | Verifique se o Bash 4+ está instalado |
 | Cores não aparecem | `export TERM=xterm-256color` |
 | Setas não funcionam | Tente outro terminal (GNOME Terminal, Konsole, etc) |
 | fzf não encontrado | Use fallback (funciona sem fzf!) ou instale: `sudo dnf install fzf` |

@@ -118,7 +118,7 @@ wellarch/
 
 ### Teste de Menu Interativo
 ```bash
-./teste-multiselect-interativo.sh
+bash tests/test_functions.sh
 ```
 
 ---

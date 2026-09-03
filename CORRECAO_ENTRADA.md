@@ -60,12 +60,12 @@ Duas funções foram reescritas:
 ### Teste Rápido (Recomendado ⭐)
 ```bash
 cd ~/Documentos/WELLARCH
-./teste-entrada.sh
+bash tests/test_functions.sh
 ```
 
 **O que testar:**
-1. Use ↑↓ para navegar entre as 5 opções
-2. Pressione ESPAÇO para marcar/desmarcar
+1. Confira as opções numeradas exibidas
+2. Digite o número da opção desejada
 3. Pressione ENTER para confirmar
 
 **Resultado esperado:**
@@ -103,7 +103,7 @@ gnome-terminal -- bash
 xterm -e bash
 
 # Ou force o teste
-TERM=xterm-256color ./teste-entrada.sh
+TERM=xterm-256color bash tests/test_functions.sh
 ```
 
 ### "Setas ainda não funcionam"
@@ -121,7 +121,7 @@ sudo dnf install coreutils
 exit
 # Abra novo terminal e tente de novo
 cd ~/Documentos/WELLARCH
-./teste-entrada.sh
+bash tests/test_functions.sh
 ```
 
 ## Detalhes Técnicos
@@ -179,7 +179,7 @@ fi
 ## Teste Agora! 🚀
 
 ```bash
-./teste-entrada.sh
+bash tests/test_functions.sh
 ```
 
 Se funcionar → 🎉 Tudo OK!  

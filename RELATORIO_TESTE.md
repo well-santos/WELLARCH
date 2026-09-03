@@ -16,7 +16,7 @@
 ### 1. **Sintaxe dos Scripts**
 - ✅ `wellarch.sh` - OK
 - ✅ `lib/menu.sh` - OK
-- ✅ `teste-menus.sh` - OK
+- ✅ `tests/test_functions.sh` - OK
 
 ### 2. **Permissões de Execução**
 - ✅ Scripts marcados como executáveis
@@ -183,7 +183,7 @@ Selecione os aplicativos Flatpak a instalar:
 
 ## 📝 Log Completo
 
-Arquivo salvo em: `teste-output.log`
+Os resultados podem ser reproduzidos com `bash tests/test_functions.sh`.
 
 ```
 ✓ Script iniciado com sucesso
