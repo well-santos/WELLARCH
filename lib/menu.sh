@@ -17,18 +17,16 @@ menu_select() {
 	shift
 	local default_option="$1"
 	shift
-	local options=("$@")
+	local options=("$default_option" "$@")
 	local cleaned=()
-	local seen_default=0
+	declare -A seen_options=()
 	local item
 
 	for item in "${options[@]}"; do
-		if [[ "$item" == "$default_option" && "$seen_default" -eq 1 ]]; then
+		if [[ -n "${seen_options[$item]+x}" ]]; then
 			continue
 		fi
-		if [[ "$item" == "$default_option" ]]; then
-			seen_default=1
-		fi
+		seen_options["$item"]=1
 		cleaned+=("$item")
 	done
 	options=("${cleaned[@]}")
