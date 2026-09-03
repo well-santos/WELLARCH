@@ -111,6 +111,7 @@ menu_multiselect() {
 	local selected=()
 	local input=""
 	local choice
+	local -a choices=()
 	local input_source=""
 	if [[ ! -t 0 && -e /dev/tty ]]; then
 		input_source="</dev/tty"
@@ -142,7 +143,7 @@ menu_multiselect() {
 
 		if [[ -z "$input" ]]; then
 			if [[ ${#selected[@]} -gt 0 ]]; then
-				echo "${selected[@]}"
+				printf '%s\n' "${selected[@]}"
 				return 0
 			fi
 			continue
@@ -154,7 +155,11 @@ menu_multiselect() {
 		fi
 
 		selected=()
-		for choice in $input; do
+		choices=()
+		local original_ifs="$IFS"
+		IFS=$' \t' read -r -a choices <<< "$input"
+		IFS="$original_ifs"
+		for choice in "${choices[@]}"; do
 			if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#options[@]} )); then
 				selected+=("${options[$((choice - 1))]}")
 			fi
@@ -162,7 +167,7 @@ menu_multiselect() {
 	
 		# Se pelo menos uma opção foi selecionada, confirma
 		if [[ ${#selected[@]} -gt 0 ]]; then
-			echo "${selected[@]}"
+			printf '%s\n' "${selected[@]}"
 			return 0
 		fi
 	
