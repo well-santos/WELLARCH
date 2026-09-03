@@ -44,13 +44,31 @@ wellarch_configure_oh_my_zsh() {
     fi
 
     if is_installed zsh; then
-        if [[ "$SHELL" != */zsh ]]; then
-            if command -v chsh >/dev/null 2>&1; then
-                chsh -s "$(command -v zsh)" "$USER" >/dev/null 2>&1 || true
-                echo -e "${VERDE}✅ Zsh definido como shell padrão (faça logout/login).${NC}"
+        local zsh_path="$(command -v zsh)"
+        local configured_shell=""
+        if command -v getent >/dev/null 2>&1; then
+            configured_shell="$(getent passwd "${USER:-$LOGNAME}" | cut -d: -f7)"
+        fi
+
+        if ! grep -Fxq "$zsh_path" /etc/shells 2>/dev/null; then
+            printf '%s\n' "$zsh_path" | sudo_run tee -a /etc/shells >/dev/null
+        fi
+
+        if [[ "$configured_shell" != "$zsh_path" ]]; then
+            if command -v chsh >/dev/null 2>&1 && chsh -s "$zsh_path" "${USER:-$LOGNAME}"; then
+                configured_shell="$(getent passwd "${USER:-$LOGNAME}" | cut -d: -f7)"
+                if [[ "$configured_shell" == "$zsh_path" ]]; then
+                    echo -e "${VERDE}✅ Zsh definido como shell padrão. Faça logout/login para aplicar.${NC}"
+                else
+                    echo -e "${AMARELO}⚠️ chsh não confirmou o Zsh como shell padrão.${NC}"
+                    FAILED_ITEMS+=("Shell padrão: zsh")
+                fi
             else
-                echo -e "${AMARELO}⚠️ chsh não disponível; zsh não definido como padrão.${NC}"
+                echo -e "${AMARELO}⚠️ Não foi possível definir o Zsh como shell padrão.${NC}"
+                FAILED_ITEMS+=("Shell padrão: zsh")
             fi
+        else
+            echo -e "${VERDE}✅ Zsh já é o shell padrão.${NC}"
         fi
     fi
 

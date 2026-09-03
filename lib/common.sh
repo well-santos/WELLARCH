@@ -328,7 +328,7 @@ check_sudo() {
 # Check required dependencies
 check_dependencies() {
     local required_cmds=(
-        pacman sudo grep awk df ping tee mkdir rm cp sed mktemp
+        pacman sudo grep awk df ping tee mkdir rm cp sed mktemp getent
     )
     local missing=()
     
