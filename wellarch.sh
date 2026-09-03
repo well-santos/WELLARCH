@@ -175,13 +175,6 @@ is_chaotic_pkg() {
 	pacman -Si "chaotic-aur/$1" >/dev/null 2>&1
 }
 
-SKIPPED_STEPS=()
-
-add_skipped_step() {
-	local step="$1"
-	SKIPPED_STEPS+=("$step")
-}
-
 backup_file() {
 	local src="$1"
 	local bak="$2"
@@ -215,6 +208,13 @@ restore_backups() {
 	done
 }
 fi
+
+SKIPPED_STEPS=()
+
+add_skipped_step() {
+	local step="$1"
+	SKIPPED_STEPS+=("$step")
+}
 
 install_pkg_preferred() {
 	local display_name="$1"
