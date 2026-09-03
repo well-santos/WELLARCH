@@ -53,7 +53,7 @@ Este projeto segue um código de conduta respeitoso. Esperamos que todos os cont
 ### Estilo Bash
 
 - Use `#!/bin/bash` como shebang
-- Ative modo seguro: `set -euo pipefail`
+- Mantenha tratamento rigoroso de erros: `set -euo pipefail`
 - Use `[[ ]]` para testes condicionais (não `[ ]`)
 - Declare variáveis locais em funções com `local`
 - Use aspas duplas em variáveis: `"$variavel"`

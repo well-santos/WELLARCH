@@ -93,7 +93,6 @@ download_with_curl() {
     local libs=(
         "common.sh"
         "menu.sh"
-        "safe_mode.sh"
         "system.sh"
         "steps.sh"
         "aur.sh"

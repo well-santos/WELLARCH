@@ -4,7 +4,7 @@
 # Script para remover/desfazer alterações do WELLARCH
 # ==============================================================================
 
-# Ativa modo seguro
+# Ativa tratamento rigoroso de erros
 set -euo pipefail
 IFS=$'\n\t'
 

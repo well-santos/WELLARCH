@@ -11,12 +11,6 @@ wellarch_setup_chaotic_aur() {
         return 0
     fi
 
-    if ! allow_destructive_action "Configuração do Chaotic AUR"; then
-        echo -e "${AMARELO}⏭️  Modo seguro ativo: Chaotic AUR bloqueado.${NC}"
-        add_skipped_step "Configuração do Chaotic AUR (modo seguro)"
-        return 0
-    fi
-
     if grep -q "chaotic-aur" /etc/pacman.conf; then
         echo "✅ Chaotic AUR já está configurado. Pulando."
         return 0

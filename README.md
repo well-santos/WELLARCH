@@ -257,7 +257,7 @@ curl -sSL https://raw.githubusercontent.com/well-santos/WELLARCH/main/install.sh
 #### Via Arquivo Local
 
 ```bash
-# Modo seguro: simula sem fazer mudanças
+# Simular sem fazer mudanças
 ./wellarch.sh --dry-run
 
 # Execução automática (sem prompts, aceita padrões)
@@ -293,7 +293,7 @@ Ao final da execução, o script mostra um **relatório detalhado** com:
 
 O script foi desenvolvido com as seguintes práticas:
 
-- **Modo seguro** com `set -euo pipefail` para falhar rapidamente em erros críticos
+- **Execução rigorosa** com `set -euo pipefail` para falhar rapidamente em erros críticos
 - **Limpeza automática** de diretórios temporários mesmo em caso de erro ou interrupção
 - **Logging completo** registrado em `~/.cache/wellarch/wellarch.log`
 - **Download seguro** de ferramentas em diretório temporário com confirmação antes de execução

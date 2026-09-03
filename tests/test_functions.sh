@@ -279,24 +279,10 @@ test_vscode_package() {
 }
 
 test_safe_mode_guard() {
-    run_test "Safe mode guard"
+    run_test "Safe mode removed"
 
-    if declare -f safe_mode_enabled >/dev/null 2>&1 && declare -f allow_destructive_action >/dev/null 2>&1; then
-        SAFE_MODE=true
-        if safe_mode_enabled && ! allow_destructive_action "DNS test"; then
-            ((TESTS_PASSED++)) || true
-            echo -e "  ${GREEN}✓${NC} Safe mode blocks destructive actions by default"
-        else
-            ((TESTS_FAILED++)) || true
-            echo -e "  ${RED}✗${NC} Safe mode blocks destructive actions by default"
-        fi
-        ((TESTS_RUN++)) || true
-    else
-        ((TESTS_FAILED++)) || true
-        echo -e "  ${RED}✗${NC} Safe mode guard helpers are missing"
-        ((TESTS_RUN++)) || true
-    fi
-    SAFE_MODE=false
+    assert_false 'grep -Eq "SAFE_MODE|safe_mode_enabled|allow_destructive_action|--unsafe|--safe" "${SCRIPT_DIR}/wellarch.sh"' \
+        "Main installer does not contain safe mode"
 }
 
 # ==============================================================================

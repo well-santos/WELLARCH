@@ -65,12 +65,6 @@ wellarch_cleanup_system() {
         return 0
     fi
 
-    if ! allow_destructive_action "Limpeza do Sistema"; then
-        echo -e "${AMARELO}⏭️  Modo seguro ativo: limpeza do sistema bloqueada.${NC}"
-        add_skipped_step "Limpeza do Sistema (modo seguro)"
-        return 0
-    fi
-
     echo -e "${AZUL}🧹 Limpeza do Sistema...${NC}"
 
     if ! sudo_run_retry "Instalação do pacman-contrib" pacman -S --needed pacman-contrib --noconfirm &>/dev/null; then

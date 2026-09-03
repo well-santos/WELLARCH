@@ -13,12 +13,6 @@ wellarch_setup_dns() {
         return 0
     fi
 
-    if ! allow_destructive_action "Configuração de DNS"; then
-        echo -e "${AMARELO}⏭️  Modo seguro ativo: configuração de DNS bloqueada.${NC}"
-        add_skipped_step "Configuração de DNS (modo seguro)"
-        return 0
-    fi
-
     if [[ "$DNS_PROVIDER" == "none" ]]; then
         echo "⏭️ DNS: Mantendo configuração padrão do sistema."
         add_skipped_step "Configuração de DNS (padrão do sistema)"

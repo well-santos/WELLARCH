@@ -18,12 +18,6 @@ wellarch_setup_reflector() {
         return 0
     fi
 
-    if ! allow_destructive_action "Otimização de Mirrors"; then
-        echo -e "${AMARELO}⏭️  Modo seguro ativo: otimização de mirrors bloqueada.${NC}"
-        add_skipped_step "Otimização de Mirrors (modo seguro)"
-        return 0
-    fi
-
     if ! is_installed reflector; then
         echo "🔧 Instalando reflector para ordenação de mirrors..."
         sudo_run_retry "Instalação do reflector" pacman -S --needed reflector --noconfirm || {

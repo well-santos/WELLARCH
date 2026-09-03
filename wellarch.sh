@@ -39,7 +39,6 @@ if [[ -n "$LIB_DIR" && -f "${LIB_DIR}/common.sh" ]]; then
 
     for lib_file in \
         "${LIB_DIR}/menu.sh" \
-        "${LIB_DIR}/safe_mode.sh" \
         "${LIB_DIR}/system.sh" \
         "${LIB_DIR}/steps.sh" \
         "${LIB_DIR}/aur.sh" \
@@ -528,7 +527,6 @@ FAILED_ITEMS=()
 # Argumentos e flags de skip
 DRY_RUN=false
 ASSUME_YES=false
-SAFE_MODE=true
 FORCE_RESOLV_LOCK=false
 SKIP_UPDATE=false
 SKIP_MIRRORS=false
@@ -591,14 +589,6 @@ while [ $# -gt 0 ]; do
 		;;
 	--yes | -y)
 		ASSUME_YES=true
-		shift
-		;;
-	--unsafe)
-		SAFE_MODE=false
-		shift
-		;;
-	--safe)
-		SAFE_MODE=true
 		shift
 		;;
 	--verbose)
@@ -706,8 +696,6 @@ ${AMARELO}OPÇÕES GERAIS:${NC}
   --non-interactive      Evita prompts (use com --yes)
   --version              Exibe versão do script
   --yes, -y              Assume "sim" para todos os prompts
-  --safe                 Ativa modo seguro (bloqueia ações destrutivas por padrão)
-  --unsafe               Permite ações destrutivas; desativa modo seguro
   --force-resolv-lock    Trava /etc/resolv.conf com chattr +i
   --skip-resolv-conf     Não sobrescreve /etc/resolv.conf
   --post-check           Executa verificação pós-instalação
@@ -731,11 +719,8 @@ ${AMARELO}EXEMPLOS:${NC}
   # Executar normalmente:
   $0
 
-# Modo automático (seguro por padrão):
+	# Modo automático:
 	$0 --yes
-
-	# Permitir ações destrutivas explícitas:
-	$0 --unsafe --yes
 
   # Usar arquivo de configuração:
   $0 --config ~/.config/wellarch/config
@@ -1042,12 +1027,6 @@ update_system() {
 		return 0
 	fi
 	
-	if ! allow_destructive_action "Atualização do Sistema"; then
-		echo -e "${AMARELO}⏭️  Modo seguro ativo: atualização do sistema bloqueada.${NC}"
-		add_skipped_step "Atualização do Sistema (modo seguro)"
-		return 0
-	fi
-	
 	echo "🔄 Atualizando sistema com pacman -Syu..."
 	if sudo_run_retry "Atualização do Sistema (pacman -Syu)" pacman -Syu --noconfirm; then
 		echo -e "${VERDE}✅ Sistema atualizado!${NC}"
@@ -1280,12 +1259,8 @@ if [[ "$RESTART_SYSTEM" == true ]]; then
 	if [[ "${DRY_RUN:-false}" == true ]]; then
 		echo -e "${AMARELO}(dry-run) reinício do sistema solicitado; pulando.${NC}"
 	else
-		if ! allow_destructive_action "Reinicialização do Sistema"; then
-			echo -e "${AMARELO}⏭️  Modo seguro ativo: reinicialização bloqueada.${NC}"
-		else
-			echo -e "${AMARELO}🔁 Reiniciando o sistema...${NC}"
-			sudo_run systemctl reboot
-		fi
+		echo -e "${AMARELO}🔁 Reiniciando o sistema...${NC}"
+		sudo_run systemctl reboot
 	fi
 fi
 

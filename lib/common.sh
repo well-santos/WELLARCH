@@ -228,24 +228,6 @@ prompt_yes_no() {
 }
 
 # ==============================================================================
-# SAFE MODE / DESTRUCTIVE ACTION GUARD
-# ==============================================================================
-
-safe_mode_enabled() {
-    [[ "${SAFE_MODE:-true}" == true ]]
-}
-
-allow_destructive_action() {
-    local action="${1:-operação}"
-
-    if safe_mode_enabled; then
-        log_warn "Modo seguro ativo: ação destrutiva bloqueada (${action}). Use --unsafe para permitir."
-        return 1
-    fi
-
-    return 0
-}
-
 # ==============================================================================
 # SYSTEM CHECKS
 # ==============================================================================

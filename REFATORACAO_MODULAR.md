@@ -26,12 +26,7 @@ Este documento descreve a refatoração modular completa do projeto WELLARCH, tr
 - Funções de retry e execução com sudo
 - Verificação de dependências do sistema
 
-#### 2. **lib/safe_mode.sh** (segurança)
-- Guards contra ações destrutivas
-- `allow_destructive_action()` - bloqueia operações perigosas sem `--unsafe`
-- Gerenciamento de modo seguro
-
-#### 3. **lib/system.sh** (validação do sistema)
+#### 2. **lib/system.sh** (validação do sistema)
 - `check_internet()` - valida conectividade
 - `check_disk_space()` - verifica espaço disponível
 - `check_arch_linux()` - confirma distribuição Arch
@@ -108,7 +103,7 @@ post_install_check()
 
 ## 🔒 Segurança Mantida
 
-- ✅ **Safe Mode Active by Default**: `--unsafe` obrigatório para ações perigosas
+- ✅ **Confirmações explícitas**: prompts antes de operações críticas
 - ✅ **Backups Automáticos**: Todos os arquivos críticos têm backup
 - ✅ **Error Handling**: Trap handlers preservados para limpeza em caso de erro
 - ✅ **Dry Run Support**: Modo `--dry-run` funciona em todos os módulos
@@ -162,7 +157,7 @@ bash tests/test_functions.sh     # 40/40 testes passaram ✓
 ## 📝 Notas para Futuros Mantenedores
 
 - Módulos são independentes e podem ser testados isoladamente
-- Sempre usar `allow_destructive_action()` antes de operações perigosas
+- Usar confirmações explícitas antes de operações críticas
 - Preservar o padrão `wellarch_*` para funções públicas de módulos
 - Safe mode é o padrão; usuários devem optar por desabilitá-lo
 - Manter compatibilidade com bash 4.0+
